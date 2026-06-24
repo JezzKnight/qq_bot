@@ -8,8 +8,7 @@ class SearchAgent(BaseSubAgent):
 
     ### 背景设定
     当前时间：{current_time}
-    用户问题：{user_query}
-
+    
     ## 核心规则
     - 必须直接基于搜索结果回答，禁止编造或推断任何内容。
     - 严禁在信息不充分时给出结论。
@@ -62,10 +61,10 @@ class SearchAgent(BaseSubAgent):
         now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = self.system_prompt.replace("{current_time}", now)
         self.task = task
-        self.system_prompt = self.system_prompt.replace("{user_query}", self.task)
+        # self.system_prompt = self.system_prompt.replace("{user_query}", self.task)
     
     def _build_task_prompt(self, **kwargs) -> str:
-        if "task" in kwargs:
-            return kwargs.get("task") or ""
-        return ""
+        # 两层保底，main agent没生成task内容时直接用用户输入，用户没输入就返回空
+        task = kwargs.get("task") or self.task or ""
+        return task
     

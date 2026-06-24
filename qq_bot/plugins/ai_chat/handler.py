@@ -6,6 +6,8 @@ from ...ai.types import ChatMessage, ImageData
 from ...ai.openai_client import Openaiclient
 from ...ai.gemini_client import Geminiclient
 from ...memory.manager import MemoryManager
+from ...memory.sqlite_repo import SqliteRepository
+from ...memory.repository import MemoryRepository
 from .tools import TOOLS, get_tools_schema
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
@@ -40,13 +42,20 @@ async def get_gemini_client(config: AiChatConfig) -> Geminiclient:
 
 
 async def get_memory(config: AiChatConfig) -> MemoryManager:
+    """组装车间"""
+    repo: MemoryRepository
     global _Memory
-    if _Memory is None:
-        _Memory = MemoryManager(max_history=config.max_history,
-                       data_dir=Path(get_plugin_data_dir()))
+    if _Memory is not None:
+        return _Memory
+
+    if config.memory_backend == "sqlite":
+        repo = SqliteRepository(db_path=Path(get_plugin_data_dir()) / "ai_chat" / "memory.db")
+    else:
+        raise ValueError(f"不支持的后端类型：{config.memory_backend}")
+        
+    await repo.init()
+    _Memory = MemoryManager(repository=repo, max_history=config.max_history,)
     return _Memory
-    # return MemoryManager(max_history=config.max_history,
-    #                    data_dir=Path("./test_data"))
 
 
 async def get_client_for_model(config: AiChatConfig, model: str):
@@ -100,9 +109,7 @@ def set_session_model(session_id: str, model: str):
 _load_session_models()
 # ──────── 主函数 ────────
 async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
-    """
-    主函数，接收用户消息解析处理发送给AI，然后解析回复用户AI的response
-    """
+    """主函数，接收用户消息解析处理发送给AI，然后解析回复用户AI的response"""
     config = get_plugin_config(AiChatConfig)
     content = event.get_plaintext().strip()
     # 添加空内容回复规则
@@ -124,7 +131,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     model_name = get_session_model(session_id, config.ai_model)
     client = await get_client_for_model(config, model_name)
     memory = await get_memory(config)
-    history = memory.get_history(session_id)
+    history = await memory.get_history(session_id)
     # 构建messages，直接将对话记录紧跟在prompt后面，然后加入用户发言
     messages= [ChatMessage(role="system", content=f"{config.system_prompt}")]
     messages.extend(history)
@@ -140,6 +147,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             model = model_name,
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
+            # 工具列表
             tools = get_tools_schema("search_agent","web_fetch")
         )
         # 如果没有工具调用就直接结束循环正常输出
@@ -161,8 +169,8 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                     result = "[系统提示] 本轮对话已调用过搜索工具，请直接基于已有信息回答用户，不要再次搜索。"
                 else:
                     search_agent_called = True
-                    args = {"model": model_name, "task": content}
-                    await matcher.send(MessageSegment.text("正在搜索ing......"))
+                    args = {"model": model_name, "task": args.get("task", content)}
+                    await matcher.send(MessageSegment.text("正在搜索相关信息"))
                     result = await tool["func"](**args)
             else:
                 result = await tool["func"](**args)
@@ -178,7 +186,8 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         final_content = "搜不到呢，你要不换个关键词试试"
 
     # 添加至记忆中
-    memory.append(session_id, content, final_content)
+    sender_name = event.sender.card or event.sender.nickname or ""
+    await memory.append(session_id, sender_name, content, final_content)
 
     if is_group:
         # msg = MessageSegment.at(event.user_id) + MessageSegment.text(final_content)
