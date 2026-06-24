@@ -1,84 +1,39 @@
-import json
 import re
-from datetime import datetime
-from pathlib import Path
+from .repository import MemoryRepository
 from ..ai.types import ChatMessage
 
 
 class MemoryManager:
-    def __init__(self, max_history: int, data_dir: Path):
+    def __init__(self, repository: MemoryRepository, max_history: int):
+        self._repo = repository
         self.max_history = max_history
-        self._data_dir = data_dir
 
 
-    def _get_file_path(self, session_id: str) -> Path:
-        # pathlib语法糖拼接路径，就和os.path.join()
-        return self._data_dir / "ai_chat" / "conversations"/ f"{session_id}.json"
+    async def get_history(self, session_id: str) -> list[ChatMessage]:
+        rows = await self._repo.get_messages(session_id=session_id, limit=self.max_history*2)
+        return [ChatMessage(**r) for r in rows]
     
 
-    def _ensure_dir(self):
-        # dummy是session_id占位符填什么都无所谓，.parent会将文件名去除，然后检查文件夹是否存在
-        self._get_file_path("dummy").parent.mkdir(parents=True, exist_ok=True)
+    async def append(self, session_id: str, user_name: str, user_msg: str, assistant_msg: str):
+        """记录对话历史到db文件中，全量覆盖"""
+        await self._repo.add_messages(session_id=session_id, messages=[
+            {"sender_name": user_name, "role": "user", "content": user_msg},
+            {"role": "assistant", "content": assistant_msg},
+            ])
 
 
-    def get_history(self, session_id: str) -> list[ChatMessage]:
-        file_path = self._get_file_path(session_id)
-        if not file_path.exists():
-            # 文件不存在说明是新对话
-            return []
-        # 采用pathlib写法read_text就相当于对pathlib对象with open read
-        history = json.loads(file_path.read_text(encoding="UTF-8"))
-
-        return [ChatMessage(**m) for m in history["messages"]]
+    async def clear(self, session_id: str):
+        """清除会话记忆"""
+        await self._repo.delete_session(session_id=session_id)
     
 
-    def append(self, session_id: str, user_msg: str, assistant_msg: str):
-        """
-        记录对话历史到json文件中，全量覆盖
-        """
-        self._ensure_dir()
-        file_path = self._get_file_path(session_id)
-        # 存在记录就读取，不存在就创建新的对话记录对象
-        if file_path.exists():
-            data = json.loads(file_path.read_text(encoding="UTF-8"))
-        else:
-            data = {"session_id": session_id, "messages": []}
-
-        data["messages"].append({"role": "user", "content": user_msg})
-        data["messages"].append({"role": "assistant", "content": assistant_msg})
-        data["updated_at"] = datetime.now().isoformat()
-
-        # 如果messages长度超过设定上限的两倍，前面的聊天记录部分就会被截断，不保存，这样可以保证这个文件不会无限增长
-        if len(data["messages"]) > self.max_history * 2:
-            data["messages"] = data["messages"][-(self.max_history * 2):]
-        # 写回文件中，全量覆盖
-        file_path.write_text(json.dumps(data, ensure_ascii=False, indent = 2), encoding="UTF-8")
-
-
-    def clear(self, session_id: str):
-        """
-        删除聊天记录文件，让ai失忆
-        """
-        self._ensure_dir()
-        file = self._get_file_path(session_id)
-        file.unlink(missing_ok=True)
-    
-
-    def get_session_info(self, session_id: str) -> dict[str, int]:
-        self._ensure_dir()
-        file_path = self._get_file_path(session_id)
-
-        if file_path.exists():
-            data = json.loads(file_path.read_text(encoding="UTF-8"))["messages"]
-        else:
-            # 直接返回None，调用方容易出问题，直接返回双0
+    async def get_session_info(self, session_id: str) -> dict[str, int]:
+        """先获取统计数量如果为0返回结果为0，有数值再统计数值"""
+        msg_count = await self._repo.get_message_count(session_id=session_id)
+        if msg_count == 0:
             return {"message_count": 0, "estimated_tokens": 0}
-        
-        msg_count = len(data)
-        # 将messages中的消息遍历计算大致token数量
-        est_tokens = 0
-        for i in data:
-            est_tokens += self._estimated_tokens(i["content"])
+        rows = await self._repo.get_messages(session_id=session_id)
+        est_tokens = sum(self._estimated_tokens(r["content"] or "") for r in rows)
 
         return {"message_count": msg_count, "estimated_tokens": est_tokens}
 

@@ -43,6 +43,7 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
             CREATE TABLE IF NOT EXISTS messages (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id   TEXT NOT NULL,
+                sender_name  TEXT,
                 role         TEXT NOT NULL,
                 content      TEXT,
                 tool_call_id TEXT,
@@ -101,30 +102,37 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
     async def add_messages(self, session_id: str, messages: list[dict]) -> None:
         """记录新增记忆"""
         conn = await self._get_conn()
-        for msg in messages:
-            # 显式事务
-            await conn.execute(
-            """INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, images)
-                VALUES (?,?,?,?,?,?)""",
-                (
-                    session_id,
-                    msg["role"],
-                    msg.get("content"),
-                    msg.get("tool_call_id"),
-                    json.dumps(msg["tool_calls"]) if msg.get("tool_calls") else None,
-                    json.dumps(msg["images"]) if msg.get("images") else None,
-                ),
-            )
-        
-            # 维护updated_at
+        await conn.execute("BEGIN")
+        try:
+            # 维护updated_at，移动到循环外面来保证原子性，先父后子
             await conn.execute(
                 """INSERT INTO sessions (session_id, created_at, updated_at)
                     VALUES (?, datetime('now'), datetime('now'))
                     ON CONFLICT(session_id) DO UPDATE SET updated_at = datetime('now')""",
                 (session_id,),
             )
+
+            for msg in messages:
+                # 显式事务
+                await conn.execute(
+                """INSERT INTO messages (session_id, sender_name, role, content, tool_call_id, tool_calls, images)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (
+                        session_id,
+                        msg.get("sender_name"),
+                        msg["role"],
+                        msg.get("content"),
+                        msg.get("tool_call_id"),
+                        json.dumps(msg["tool_calls"]) if msg.get("tool_calls") else None,
+                        json.dumps(msg["images"]) if msg.get("images") else None,
+                    ),
+                )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
         
-        await conn.commit()
+        
 
 
     async def delete_session(self, session_id: str) -> None:

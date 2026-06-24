@@ -19,6 +19,6 @@ async def handle_reset(event: MessageEvent, matcher: Matcher):
     else:
         session_id = f"user_{event.user_id}"
 
-    memory.clear(session_id)
+    await memory.clear(session_id)
     await matcher.finish("对话记忆已清除")
 
