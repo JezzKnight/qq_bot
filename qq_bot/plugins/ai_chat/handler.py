@@ -8,10 +8,10 @@ from ...ai.gemini_client import Geminiclient
 from ...memory.manager import MemoryManager
 from ...memory.sqlite_repo import SqliteRepository
 from ...memory.repository import MemoryRepository
-from .tools import TOOLS, get_tools_schema
+from .tools import TOOLS, get_tools_schema,current_scope
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
-from nonebot import get_plugin_config
+from nonebot import get_plugin_config,get_driver
 from nonebot_plugin_localstore import get_plugin_data_dir
 
 
@@ -21,6 +21,7 @@ _Memory: MemoryManager | None = None
 # 用内存来记录群聊用的是什么模型
 _session_models: dict[str, str] = {}
 _models_file: Path | None = None
+_driver = get_driver()
 
 
 async def get_openai_client(config: AiChatConfig) -> Openaiclient:
@@ -56,6 +57,35 @@ async def get_memory(config: AiChatConfig) -> MemoryManager:
     await repo.init()
     _Memory = MemoryManager(repository=repo, max_history=config.max_history,)
     return _Memory
+
+
+async def load_memory_for_context():
+    """加载INDEX.md"""
+    scope = current_scope.get()
+    root = get_plugin_data_dir() / "long_term_memory"
+
+    parts = []
+
+    if scope.startswith("groups/"):
+        # scope 格式: "groups/{group_id}/{user_id}"
+        _, group_id, user_id = scope.split("/")
+
+        # 1. 群公共记忆
+        group_index = root / "groups" / group_id / "_group" / "INDEX.md"
+        if group_index.exists():
+            parts.append(group_index.read_text(encoding="utf-8"))
+
+        # 2. 当前发言人的群内记忆
+        user_index = root / scope / "INDEX.md"
+        if user_index.exists():
+            parts.append(user_index.read_text(encoding="utf-8"))
+    else:
+        # 私聊: "private/{user_id}"
+        user_index = root / scope / "INDEX.md"
+        if user_index.exists():
+            parts.append(user_index.read_text(encoding="utf-8"))
+
+    return "\n\n".join(parts) if parts else None
 
 
 async def get_client_for_model(config: AiChatConfig, model: str):
@@ -110,6 +140,13 @@ _load_session_models()
 # ──────── 主函数 ────────
 async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     """主函数，接收用户消息解析处理发送给AI，然后解析回复用户AI的response"""
+    # 用内存储存当前是对话状态的scope路径
+    if isinstance(event, GroupMessageEvent):
+        scope = f"groups/{event.group_id}/{event.user_id}"
+    else:
+        scope = f"private/{event.user_id}"
+    current_scope.set(scope)
+    
     config = get_plugin_config(AiChatConfig)
     content = event.get_plaintext().strip()
     # 添加空内容回复规则
@@ -128,12 +165,18 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         session_id = f"user_{event.user_id}"
         is_group = False
 
+    # 获取必要参数
     model_name = get_session_model(session_id, config.ai_model)
     client = await get_client_for_model(config, model_name)
     memory = await get_memory(config)
     history = await memory.get_history(session_id)
-    # 构建messages，直接将对话记录紧跟在prompt后面，然后加入用户发言
-    messages= [ChatMessage(role="system", content=f"{config.system_prompt}")]
+    # 构建prompt
+    memory_prompt = await load_memory_for_context()
+    system_prompt = config.system_prompt
+    if memory_prompt:
+        system_prompt = f"{system_prompt}\n\n{memory_prompt}"
+    messages= [ChatMessage(role="system", content=f"{system_prompt}")]
+    # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
     images = await extract_images(event)
     # 将图片信息传入messages中，让geminiclient中来处理
@@ -148,7 +191,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent","web_fetch")
+            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "recall_memory")
         )
         # 如果没有工具调用就直接结束循环正常输出
         if not response.tool_calls:
@@ -197,6 +240,17 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     else:
         msg = MessageSegment.text(final_content)
     return await matcher.finish(msg)
+
+@_driver.on_shutdown
+async def _cleanup():
+    """退出时清理资源，结束生命周期"""
+    global _Memory,_openai_client,_gemini_client
+    if _Memory is not None:
+        await _Memory.close()
+    if _openai_client is not None:
+        await _openai_client.close()
+    if _gemini_client is not None:
+        await _gemini_client.close()
 
 # ──────── 特定功能函数 ────────
 def spilt_message(text: str) -> list[str]:

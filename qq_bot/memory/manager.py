@@ -61,4 +61,7 @@ class MemoryManager:
         english_words = len(non_chinese.split())
 
         return int(chinese_chars * 2 + english_words * 1.3)
+    
+    async def close(self) -> None:
+        await self._repo.close()
 
