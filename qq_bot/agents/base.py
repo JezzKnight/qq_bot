@@ -57,37 +57,43 @@ class BaseSubAgent(ABC):
             messages.append(ChatMessage(role= "user", content=f"搜索任务：{content}\n\n请开始搜索。"))
         # 获取对应client
         client = self._get_client()
-        for _ in range(self.max_rounds):
-            response = await client.chat(
-                messages=messages,
-                model=self.model,
-                tools=self.tools
-            )
-            if not response.tool_calls:
-                final_content = response.content or "AI暂时无法响应"
-                print(f"[INFO] Sub Agent工具最终响应：{final_content}")
-                # 本轮没有工具调用触发就结束本轮循环
-                break
-            
-            assistant_msg = ChatMessage(role="assistant", tool_calls = response.tool_calls, raw_parts=response.raw_parts)
-            messages.append(assistant_msg)
+        try:
+            for _ in range(self.max_rounds):
+                response = await client.chat(
+                    messages=messages,
+                    model=self.model,
+                    tools=self.tools
+                )
+                if not response.tool_calls:
+                    final_content = response.content or "AI暂时无法响应"
+                    print(f"[INFO] Sub Agent工具最终响应：{final_content}")
+                    # 本轮没有工具调用触发就结束本轮循环
+                    break
+                
+                assistant_msg = ChatMessage(role="assistant", tool_calls = response.tool_calls, raw_parts=response.raw_parts)
+                messages.append(assistant_msg)
 
-            # print(f"[INFO] 工具调用：{response.tool_calls}")
-            for tc in response.tool_calls:
-                func = tc["function"]
-                tool = TOOLS[func["name"]]
-                args = json.loads(func["arguments"])
-                result = await tool["func"](**args)
+                # print(f"[INFO] 工具调用：{response.tool_calls}")
+                for tc in response.tool_calls:
+                    func = tc["function"]
+                    tool = TOOLS[func["name"]]
+                    args = json.loads(func["arguments"])
+                    result = await tool["func"](**args)
 
-                messages.append(ChatMessage(
-                    role = "tool",
-                    content = result,
-                    tool_call_id = tc["id"],
-                ))
-        # for循环正常break就忽略else，未触发循环结束则触发else
-        else:
-            final_content = fail_msg
-            return final_content
+                    messages.append(ChatMessage(
+                        role = "tool",
+                        content = result,
+                        tool_call_id = tc["id"],
+                    ))
+            # for循环正常break就忽略else，未触发循环结束则触发else
+            else:
+                final_content = fail_msg
+                return final_content
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Sub Agent '{self.agent_name}' 执行异常: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            final_content = f"{fail_msg}（原因：{e}）"
         
         return final_content
         
