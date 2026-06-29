@@ -1,7 +1,10 @@
 
 from nonebot import get_plugin_config
+from ..config import AiChatConfig
 from ....agents.search_agent import SearchAgent
-from . import register_tool, get_tools_schema
+from ....ai.openai_client import Openaiclient
+from ....ai.gemini_client import Geminiclient
+from .registry import register_tool, get_tools_schema, TOOLS
 
 @register_tool(
     name="search_agent",
@@ -21,8 +24,14 @@ from . import register_tool, get_tools_schema
                 }
 )
 async def search_agent(task: str, model: str,):
+    # 在此处构造client然后注入
+    config = get_plugin_config(AiChatConfig)
+    if "gemini" in model.lower():
+        client = Geminiclient(api_key=config.gemini_api_key)
+    else:
+        client = Openaiclient(base_url=config.ai_base_url, api_key=config.ai_api_key)
     # 构建sub agent的工具列表
     tools = get_tools_schema("web_search","get_current_time","web_fetch")
-    subagent = SearchAgent(tools, model, task)
+    subagent = SearchAgent(client, tools, model, task, TOOLS)
     search_res = await subagent.execute(fail_msg="检索任务失败")
     return search_res

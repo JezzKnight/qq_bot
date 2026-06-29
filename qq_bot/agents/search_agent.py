@@ -1,6 +1,5 @@
 from .base import BaseSubAgent
 from datetime import datetime
-# 4. 中文语境问题必须用中文关键词搜至少一轮，优先命中中文垂类网站。
 class SearchAgent(BaseSubAgent):
     agent_name: str = "search_agent"
     system_prompt: str = """
@@ -58,10 +57,12 @@ class SearchAgent(BaseSubAgent):
     """
     max_rounds: int = 20
 
-    def __init__(self, tools: list[dict], model: str, task: str):
-        super().__init__(tools, model)
+    def __init__(self, client, tools: list[dict], model: str, task: str, tool_registry:dict[str, dict]):
+        super().__init__(client, tools, model, tool_registry)
+        # 为提示词注入当前事件 
         now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = self.system_prompt.replace("{current_time}", now)
+        
         self.task = task
         # self.system_prompt = self.system_prompt.replace("{user_query}", self.task)
     

@@ -2,14 +2,8 @@
 
 import json
 from abc import ABC, abstractmethod
-from nonebot import get_plugin_config
-from ..plugins.ai_chat.config import AiChatConfig
 from ..ai.types import ChatMessage
-from ..ai.openai_client import Openaiclient
-from ..ai.gemini_client import Geminiclient
 
-_openai_client: Openaiclient | None = None
-_gemini_client: Geminiclient | None = None
 
 class BaseSubAgent(ABC):
     """子Agent基类，本质是一个独立的LLM对话"""
@@ -18,9 +12,11 @@ class BaseSubAgent(ABC):
     max_rounds: int
 
 
-    def __init__(self, tools: list[dict], model: str):
+    def __init__(self, client, tools: list[dict], model: str, tool_registry: dict[str, dict]):
         super().__init__()
         self.model = model
+        self.client = client
+        self.tool_registry = tool_registry
         self.tools: list[dict] = tools # subagent可用工具列表
 
 
@@ -30,24 +26,7 @@ class BaseSubAgent(ABC):
         pass
 
 
-    def _get_client(self):
-        # 选择对应客户端
-        global _gemini_client, _openai_client
-        config = get_plugin_config(AiChatConfig)
-        if "gemini" in self.model.lower():
-            if _gemini_client is None:
-                _gemini_client = Geminiclient(api_key=config.gemini_api_key)
-            return _gemini_client
-        else:
-            if _openai_client is None:
-                _openai_client = Openaiclient(base_url=config.ai_base_url,
-                    api_key=config.ai_api_key)
-            return _openai_client
-
-
     async def execute(self, fail_msg: str, **kwargs) -> str:
-        # 防止import循环
-        from ..plugins.ai_chat.tools import TOOLS
         # 获取prompt，构建消息列表，循环执行
         messages = [ChatMessage(role = "system", content=self.system_prompt)]
         # 获取user信息
@@ -55,11 +34,9 @@ class BaseSubAgent(ABC):
         # 做一个空内容的兜底
         if content:
             messages.append(ChatMessage(role= "user", content=f"搜索任务：{content}\n\n请开始搜索。"))
-        # 获取对应client
-        client = self._get_client()
         try:
             for _ in range(self.max_rounds):
-                response = await client.chat(
+                response = await self.client.chat(
                     messages=messages,
                     model=self.model,
                     tools=self.tools
@@ -76,7 +53,9 @@ class BaseSubAgent(ABC):
                 # print(f"[INFO] 工具调用：{response.tool_calls}")
                 for tc in response.tool_calls:
                     func = tc["function"]
-                    tool = TOOLS[func["name"]]
+                    # 工具改为由构造器注入
+                    # tool = TOOLS[func["name"]]
+                    tool = self.tool_registry[func["name"]]
                     args = json.loads(func["arguments"])
                     result = await tool["func"](**args)
 
