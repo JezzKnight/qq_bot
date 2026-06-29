@@ -31,6 +31,8 @@ class Openaiclient:
                 msg["tool_calls"] = m.tool_calls
             if m.tool_call_id is not None:
                 msg["tool_call_id"] = m.tool_call_id
+            if m.sender_name is not None:
+                msg["name"] = m.sender_name
             payload_messages.append(msg)
         payload["messages"] = payload_messages
         # 模型参数传入
@@ -43,6 +45,7 @@ class Openaiclient:
             payload["tools"] = tools
 
         try:
+            print(f"payload:{payload}")
             resp = await self._client.post(
                 url = self.base_url,
                 headers = headers,

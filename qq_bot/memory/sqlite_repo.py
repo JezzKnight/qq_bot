@@ -64,9 +64,9 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
         # SQL 查询逻辑
         if limit is not None:
             cursor = await conn.execute(
-            """SELECT role, content, tool_call_id, tool_calls, images
+            """SELECT id, role, sender_name, content, tool_call_id, tool_calls, images
                 FROM (
-                    SELECT id, role, content, tool_call_id, tool_calls, images
+                    SELECT id, role, sender_name, content, tool_call_id, tool_calls, images
                     FROM messages
                     WHERE session_id = ?
                     ORDER BY id DESC
@@ -78,7 +78,7 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
         else:
             cursor = await conn.execute(
             """
-            SELECT role, content, tool_call_id, tool_calls, images
+            SELECT role, sender_name, content, tool_call_id, tool_calls, images
             FROM messages
             WHERE session_id = ?
             ORDER BY id ASC""",
@@ -89,6 +89,8 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
         # 解析数据库数据，构造历史数据
         for row in rows:
             msg = {"role":row["role"], "content":row["content"]}
+            if row["sender_name"] is not None:
+                msg["sender_name"] = row["sender_name"]
             if row["tool_call_id"] is not None:
                 msg["tool_call_id"] = row["tool_call_id"]
             if row["tool_calls"] is not None:
