@@ -3,7 +3,7 @@ from nonebot import get_plugin_config
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
-from ..handler import get_session_model, set_session_model
+from ..session_store import get_session_model, set_session_model
 from ..config import AiChatConfig
 
 AVAILABLE_ARGS = ["", "list", "deepseek-v4-flash", "deepseek-v4-pro", "gemini-3.5-flash"]

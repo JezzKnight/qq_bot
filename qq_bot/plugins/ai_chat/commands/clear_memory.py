@@ -3,7 +3,7 @@ from nonebot import get_plugin_config
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
-from ..handler import get_memory
+from ..memory_writing import get_memory
 from ..config import AiChatConfig
 
 

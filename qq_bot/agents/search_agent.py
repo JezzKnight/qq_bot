@@ -1,5 +1,7 @@
 from .base import BaseSubAgent
 from datetime import datetime
+
+
 class SearchAgent(BaseSubAgent):
     agent_name: str = "search_agent"
     system_prompt: str = """
