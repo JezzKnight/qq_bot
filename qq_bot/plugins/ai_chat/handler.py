@@ -1,139 +1,20 @@
 import json
 import httpx
-from pathlib import Path
 from .config import AiChatConfig
-from ...ai.types import ChatMessage, ImageData
-from ...ai.openai_client import Openaiclient
-from ...ai.gemini_client import Geminiclient
-from ...memory.manager import MemoryManager
-from ...memory.sqlite_repo import SqliteRepository
-from ...memory.repository import MemoryRepository
+from ...ai.types import ChatMessage
+from . import lifecycle
+from .utils import spilt_message, extract_images
+from .memory_writing import get_memory
+from .client_factory import get_client_for_model
+from .long_term_memory import load_memory_for_context
+from .session_store import _load_session_models, get_session_model
 from .tools import TOOLS, get_tools_schema,current_scope
+
 from nonebot.matcher import Matcher
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
-from nonebot import get_plugin_config,get_driver
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, MessageSegment
+from nonebot import get_plugin_config
 from nonebot_plugin_localstore import get_plugin_data_dir
 
-
-_openai_client: Openaiclient | None = None
-_gemini_client: Geminiclient | None = None
-_Memory: MemoryManager | None = None
-# 用内存来记录群聊用的是什么模型
-_session_models: dict[str, str] = {}
-_models_file: Path | None = None
-_driver = get_driver()
-
-
-async def get_openai_client(config: AiChatConfig) -> Openaiclient:
-    # 用_client全局对象来维持连接池，原先是每次调用都会创建一个新对象
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = Openaiclient(base_url=config.ai_base_url,
-                    api_key=config.ai_api_key)
-    return _openai_client
-    # return Aiclient(base_url=config.ai_base_url,
-    #                 api_key=config.ai_api_key)
-
-
-async def get_gemini_client(config: AiChatConfig) -> Geminiclient:
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = Geminiclient(api_key=config.gemini_api_key)
-    return _gemini_client
-
-
-async def get_memory(config: AiChatConfig) -> MemoryManager:
-    """组装车间"""
-    repo: MemoryRepository
-    global _Memory
-    if _Memory is not None:
-        return _Memory
-
-    if config.memory_backend == "sqlite":
-        repo = SqliteRepository(db_path=Path(get_plugin_data_dir()) / "ai_chat" / "memory.db")
-    else:
-        raise ValueError(f"不支持的后端类型：{config.memory_backend}")
-        
-    await repo.init()
-    _Memory = MemoryManager(repository=repo, max_history=config.max_history,)
-    return _Memory
-
-
-async def load_memory_for_context():
-    """加载INDEX.md"""
-    scope = current_scope.get()
-    root = get_plugin_data_dir() / "long_term_memory"
-
-    parts = []
-
-    if scope.startswith("groups/"):
-        # scope 格式: "groups/{group_id}/{user_id}"
-        _, group_id, user_id = scope.split("/")
-
-        # 1. 群公共记忆
-        group_index = root / "groups" / group_id / "_group" / "INDEX.md"
-        if group_index.exists():
-            parts.append(group_index.read_text(encoding="utf-8"))
-
-        # 2. 当前发言人的群内记忆
-        user_index = root / scope / "INDEX.md"
-        if user_index.exists():
-            parts.append(user_index.read_text(encoding="utf-8"))
-    else:
-        # 私聊: "private/{user_id}"
-        user_index = root / scope / "INDEX.md"
-        if user_index.exists():
-            parts.append(user_index.read_text(encoding="utf-8"))
-
-    return "\n\n".join(parts) if parts else None
-
-
-async def get_client_for_model(config: AiChatConfig, model: str):
-    """选择模型"""
-    if "gemini" in model.lower():
-        return await get_gemini_client(config)
-    else:
-        return await get_openai_client(config)
-
-
-def _get_models_file() -> Path:
-      """和 MemoryManager 一样，数据放在插件 data 目录下"""
-      return get_plugin_data_dir() / "ai_chat" / "session_models.json"
-
-
-def _load_session_models():
-    """模块加载时调用，从文件恢复"""
-    global _session_models
-    _models_file = _get_models_file()
-    if _models_file.exists():
-        try:
-            _session_models = json.loads(_models_file.read_text(encoding="utf-8"))
-        except Exception:
-            _session_models = {}
-
-
-def _save_session_models():
-    """每次切模型时调用，写入文件"""
-    global _models_file
-    if _models_file is None:
-        _models_file = _get_models_file()
-    
-    _models_file.parent.mkdir(parents=True, exist_ok=True)
-    _models_file.write_text(
-        json.dumps(_session_models, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
-
-
-def get_session_model(session_id: str, default_model: str) -> str:
-      """获取当前会话使用的模型名，没有覆盖则用默认值"""
-      return _session_models.get(session_id, default_model)
-
-
-def set_session_model(session_id: str, model: str):
-    """设置会话的模型覆盖（/model 命令调用）"""
-    _session_models[session_id] = model
-    _save_session_models()
 
 # 加载保存的谁使用什么模型的信息
 _load_session_models()
@@ -252,47 +133,3 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     else:
         msg = MessageSegment.text(final_content)
     return await matcher.finish(msg)
-
-@_driver.on_shutdown
-async def _cleanup():
-    """退出时清理资源，结束生命周期"""
-    global _Memory,_openai_client,_gemini_client
-    if _Memory is not None:
-        await _Memory.close()
-    if _openai_client is not None:
-        await _openai_client.close()
-    if _gemini_client is not None:
-        await _gemini_client.close()
-
-# ──────── 特定功能函数 ────────
-def spilt_message(text: str) -> list[str]:
-    """切分回复消息，用于实现分段多发"""
-    chunks = []
-    for msg in text.split("\n\n"):
-        if msg:
-            chunks.append(msg)
-        else:
-            continue
-    return chunks
-
-async def extract_images(event: MessageEvent) -> list[ImageData]:
-    images = []
-    for i in event.get_message():
-        if i.type == "image":
-            img_url= i.data.get("url")
-            if not img_url:
-                continue
-            try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
-                      resp = await client.get(img_url)
-                      if resp.status_code == 200:
-                          # 从响应头中获取类型
-                          content_type = resp.headers.get("content-type", "image/jpeg")
-                          images.append(ImageData(
-                              data=resp.content,
-                              mine_type=content_type
-                          ))
-            except Exception:
-                print("[INFO] 图片下载失败")
-                continue
-    return images
