@@ -12,6 +12,7 @@ import uuid
                 "properties": {
                 "urls":{    
                     "type": "array",
+                    "items": {"type": "string"},
                     "description": "爬取目标网页的具体urls列表，可以一次性爬取多个网站，要求list格式，每个url是一个元素。"
                     }},
                 "required": ["urls"]

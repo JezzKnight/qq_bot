@@ -8,7 +8,7 @@ from nonebot_plugin_localstore import get_plugin_data_dir
       parameters={
           "type": "object",
           "properties": {
-              "memory_names": {"type": "array", "description": "记忆文件名（不含 .md），如 ['prefers-short-reply']"}
+              "memory_names": {"type": "array", "items": {"type": "string"}, "description": "记忆文件名（不含 .md），如 ['prefers-short-reply']"}
           },
           "required": ["memory_names"]
       }

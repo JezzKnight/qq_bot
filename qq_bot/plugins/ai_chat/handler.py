@@ -1,5 +1,5 @@
 import json
-import httpx
+from datetime import datetime
 from .config import AiChatConfig
 from ...ai.types import ChatMessage
 from . import lifecycle
@@ -57,23 +57,55 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     sender_name = event.sender.card or event.sender.nickname or "未知用户"
     # 多用户提示词注入
     if is_group:
-        system_prompt += (
-            f"\n\n你当前正在群聊中与 {sender_name} 对话。"
-            f"\n在回复前你需要思考当前对话的是哪个用户，必须在思考的时候输出当前用户的名称，在识别对话记录的时候必须关注'name'字段来区分不同用户。"
-            f"\n【重要】群聊中的每个用户是独立的个体。当前用户 {sender_name} 的偏好和其他用户无关。禁止将其他用户的偏好套用到 {sender_name} 身上。"
-            f"\n回复前检查记忆索引（INDEX）：如果 INDEX 中没有 {sender_name} 的某项偏好，则视为该用户没有此偏好，按默认方式回复。"
+        group_prompt = (
+            f"""
+            ### 最高优先级：多用户身份规则
+            当前是群聊环境。
+            聊天记录中的每一条消息都是独立用户发送的。
+
+            每条消息都包含：
+            - uid（唯一身份标识，不可混淆）
+            - name（用户显示昵称，可重复）
+            - content（消息内容）
+
+            重要规则：
+            1. uid 才是唯一身份标识
+            2. 不允许混淆不同 uid 的身份
+            3. 必须区分“谁说了什么”
+            4. 不允许把不同用户的信息合并
+            5. 不允许猜测用户身份
+
+            ### 代词解析
+            "我"
+            永远表示当前消息对应的 name。
+            "你"
+            永远表示回复对象。
+            "他"
+            只能根据最近上下文确定。
+            禁止将上一位发言人的"我"延续到下一位发言人。
+
+            --------------------
+
+            当前发言人 name:{sender_name}。
+            """
         )
     else:
-        system_prompt += f"\n\n你当前正在与 {sender_name} 私聊。"
+        group_prompt = f"\n\n你当前正在与 {sender_name} 私聊。"
     # 多人用户个人长期记忆信息注入
     if memory_prompt:
-        system_prompt = f"{system_prompt}\n\n{memory_prompt}"
-    messages= [ChatMessage(role="system", content=f"{system_prompt}")]
+        long_term_mem_prompt = f"以下长期记忆仅属于当前发言人：{memory_prompt}"
+    else:
+        long_term_mem_prompt = ""
+    # 拼接最终的prompt
+    time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+    system_prompt.replace("{current_time}", time_now)
+    final_prompt = f"{group_prompt}\n\n{long_term_mem_prompt}\n\n{system_prompt}"
+    messages= [ChatMessage(role="system", content=f"{final_prompt}")]
     # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
     images = await extract_images(event)
     # 将图片信息传入messages中，让geminiclient中来处理
-    messages.append(ChatMessage(role=f"user", content=content, sender_name=event.sender.card or event.sender.nickname, images=images or None))
+    messages.append(ChatMessage(role=f"user", content=f"[sending_time={time_now} uid={event.user_id} name={event.sender.card or event.sender.nickname}] {content}", sender_name=event.sender.card or event.sender.nickname, images=images or None))
     messages = memory.trim_if_needed(messages, config.max_context_tokens)
     # 加入工具调用处理
     search_agent_called = False  # 每次对话只允许调用一次 search_agent

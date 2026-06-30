@@ -174,7 +174,7 @@ class Geminiclient():
                         # ↑Gemini args 是 dict →转成 JSON 字符串，对齐 OpenAI 格式
                     }
                 })
-            if "text" in p:
+            if "text" in p and "thought" not in p and "thoughtSignature" not in p:
                 text_parts.append(p["text"])
 
         return ChatResponse(
