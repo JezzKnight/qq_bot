@@ -5,5 +5,5 @@ from .web_fetch import web_fetch_by_tavily
 from .search_agent_tool import search_agent
 from .save_memory import save_memory
 from .recall_memory import recall_memory
-from .context import current_scope
+from .context import current_scope, current_sender_name
 

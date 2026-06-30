@@ -8,10 +8,11 @@ from .memory_writing import get_memory
 from .client_factory import get_client_for_model
 from .long_term_memory import load_memory_for_context
 from .session_store import _load_session_models, get_session_model
-from .tools import TOOLS, get_tools_schema,current_scope
+from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name
 
+import nonebot
 from nonebot.matcher import Matcher
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, MessageSegment, Bot
 from nonebot import get_plugin_config
 from nonebot_plugin_localstore import get_plugin_data_dir
 
@@ -22,11 +23,13 @@ _load_session_models()
 async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     """主函数，接收用户消息解析处理发送给AI，然后解析回复用户AI的response"""
     # 用内存储存当前是对话状态的scope路径
+    sender_name = event.sender.card or event.sender.nickname or "未知用户"
     if isinstance(event, GroupMessageEvent):
         scope = f"groups/{event.group_id}/{event.user_id}"
     else:
         scope = f"private/{event.user_id}"
     current_scope.set(scope)
+    current_sender_name.set(sender_name)
     
     config = get_plugin_config(AiChatConfig)
     content = event.get_plaintext().strip()
@@ -54,58 +57,66 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     # 构建prompt
     memory_prompt = await load_memory_for_context()
     system_prompt = config.system_prompt
-    sender_name = event.sender.card or event.sender.nickname or "未知用户"
     # 多用户提示词注入
     if is_group:
         group_prompt = (
             f"""
             ### 最高优先级：多用户身份规则
-            当前是群聊环境。
-            聊天记录中的每一条消息都是独立用户发送的。
+            当前是群聊环境。聊天记录中的每一条消息都是独立用户发送的。
 
-            每条消息都包含：
-            - uid（唯一身份标识，不可混淆）
-            - name（用户显示昵称，可重复）
-            - content（消息内容）
+            每条消息以 <user identity id="xxx" name="yyy"/> 标签开头：
+            - id = 用户的唯一身份标识（不可变）
+            - name = 用户的当前显示昵称（群名片，可变）
 
-            重要规则：
-            1. uid 才是唯一身份标识
-            2. 不允许混淆不同 uid 的身份
-            3. 必须区分“谁说了什么”
-            4. 不允许把不同用户的信息合并
-            5. 不允许猜测用户身份
+            ### 已知群成员清单
+            以下是本群部分已知成员的 id 和 name 映射，用于辨识身份时参考：
+            <group_participants>
+              <user id="632180554" name="SyngUp！的秦谷美铃本人"/>
+              <user id="3215481708" name="非人哉"/>
+              <user id="1368030978" name="新杨XIYAG"/>
+              <user id="1136084891" name="问问AI本人"/>
+              <user id="1158522916" name="你喷nm"/>
+            </group_participants>
+            注意：此清单可能不完整，新成员或未记录的用户不会出现在清单中。遇到清单中没有的用户时，以消息中的 <user identity> 标签为准。
 
-            ### 代词解析
-            "我"
-            永远表示当前消息对应的 name。
-            "你"
-            永远表示回复对象。
-            "他"
-            只能根据最近上下文确定。
-            禁止将上一位发言人的"我"延续到下一位发言人。
+            #### 身份铁律（不可违反）
+            1. id 不同 = 不同的人。这是铁律
+            2. 两个用户就算记忆内容一模一样，只要 id 不同，就是不同的人
+            3. 不允许用话题相似度或记忆相似度合并用户
+            4. 不允许把用户 A 的记忆或偏好应用到用户 B 身上
 
-            --------------------
+            #### 身份认知规则
+            1. 当前发言人: uid="{event.user_id}", name="{sender_name}"
+            2. 用户问"我是谁" → 直接读当前消息 <user identity> 标签的 name 属性回答。如果该用户在长期记忆中有记录的个人信息，再补充
+            3. 用户让你用特定称呼叫他（如"叫我xx"）→ 调用 save_memory 保存该偏好，scope="personal"
+            4. 用户问其他成员的信息 → 从对话历史或记忆索引中查找对应 uid 的信息，用 name 称呼
+            5. 回复中引用其他成员时，使用其最近消息中的 name 称呼，不要输出 id 数字
+            6. 允许自然引用其他用户的已知偏好（如"刚刚张三让我叫他高手"）
 
-            当前发言人 name:{sender_name}。
+            #### 代词解析
+            - "我" = 当前 <user identity> 标签中的 name
+            - "你" = Boooost（你自己）
+            - "他/她" = 优先看离当前消息最近的那条其他用户消息中的 name
             """
         )
     else:
         group_prompt = f"\n\n你当前正在与 {sender_name} 私聊。"
     # 多人用户个人长期记忆信息注入
     if memory_prompt:
-        long_term_mem_prompt = f"以下长期记忆仅属于当前发言人：{memory_prompt}"
+        long_term_mem_prompt = f"以下是群聊中可见的长期记忆索引：{memory_prompt}"
     else:
         long_term_mem_prompt = ""
     # 拼接最终的prompt
     time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-    system_prompt.replace("{current_time}", time_now)
+    system_prompt = system_prompt.replace("{current_time}", time_now)
     final_prompt = f"{group_prompt}\n\n{long_term_mem_prompt}\n\n{system_prompt}"
     messages= [ChatMessage(role="system", content=f"{final_prompt}")]
     # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
     images = await extract_images(event)
     # 将图片信息传入messages中，让geminiclient中来处理
-    messages.append(ChatMessage(role=f"user", content=f"[sending_time={time_now} uid={event.user_id} name={event.sender.card or event.sender.nickname}] {content}", sender_name=event.sender.card or event.sender.nickname, images=images or None))
+    identity_tag = f'<user identity id="{event.user_id}" name="{sender_name}"/>'
+    messages.append(ChatMessage(role=f"user", content=f"{identity_tag}\n{content}", sender_name=sender_name, images=images or None))
     messages = memory.trim_if_needed(messages, config.max_context_tokens)
     # 加入工具调用处理
     search_agent_called = False  # 每次对话只允许调用一次 search_agent
