@@ -9,7 +9,7 @@ scan = on_command("scan", rule=to_me(), aliases={"识别成员"}, block=True, fo
 @scan.handle()
 async def scan_group_members(bot: Bot, event: GroupMessageEvent, matcher: Matcher):
     await scan_and_save_members(bot = bot, event = event)
-    await matcher.finish("群成员信息扫描完毕")
+    await matcher.finish("群成员信息扫描更新完毕")
     
 
     
