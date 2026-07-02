@@ -82,7 +82,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             ### 已知群成员清单
             以下是本群部分已知成员的 id 和 name 映射，用于辨识身份时参考：
             {member_info}
-            注意：此清单可能不完整，新成员或未记录的用户不会出现在清单中。遇到清单中没有的用户时，以消息中的 <user identity> 标签为准。
+            注意：遇到清单中没有的用户时，以消息中的 <user identity> 标签为准。
 
             #### 身份铁律（不可违反）
             1. id 不同 = 不同的人。这是铁律

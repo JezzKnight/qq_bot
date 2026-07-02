@@ -19,14 +19,14 @@ async def scan_and_save_members(bot: Bot, event: GroupMessageEvent):
     if not group_dir.exists():
         group_dir.mkdir(parents=True, exist_ok=True)
 
-    group_mem_file = group_dir / "member.json"
-    group_mem_file.write_text(json.dumps(members), encoding='utf-8')
+    group_mem_file = group_dir / "members.json"
+    group_mem_file.write_text(json.dumps(members, ensure_ascii=False), encoding='utf-8')
     return True
 
 
 def get_group_members(group_id):
     """从本地文件获取群成员信息"""
-    member_file = get_plugin_data_dir() / "long_term_memory" / "groups" / str(group_id) / "member.json"
+    member_file = get_plugin_data_dir() / "long_term_memory" / "groups" / str(group_id) / "members.json"
     if member_file.exists():
         data = json.loads(member_file.read_text(encoding='utf-8'))
         # 构造XML
