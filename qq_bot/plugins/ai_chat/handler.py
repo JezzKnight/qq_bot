@@ -9,7 +9,7 @@ from .memory_writing import get_memory
 from .client_factory import get_client_for_model
 from .long_term_memory import load_memory_for_context
 from .session_store import _load_session_models, get_session_model
-from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name
+from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name, current_search_tracker, SearchTracker
 
 import nonebot
 from nonebot.matcher import Matcher
@@ -148,16 +148,30 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             # 构建工具调用
             tool = TOOLS[func["name"]]
             args = json.loads(func["arguments"])
+            # 调用"search agent"工具的单独处理
             if func["name"] == "search_agent":
                 if search_agent_called:
                     result = "[系统提示] 本轮对话已调用过搜索工具，请直接基于已有信息回答用户，不要再次搜索。"
                 else:
                     search_agent_called = True
                     args = {"model": model_name, "task": args.get("task", content)}
-                    await matcher.send(MessageSegment.text("正在搜索相关信息"))
-                    result = await tool["func"](**args)
+
+                    tracker: SearchTracker = {"tavily_success": False, "tavily_error_count": 0}
+                    current_search_tracker.set(tracker)
+                    try:
+                        await matcher.send(MessageSegment.text("正在找寻相关信息"))
+                        result = await tool["func"](**args)
+                    finally:
+                        current_search_tracker.set(None)
+
+                    # 子 Agent 全部轮次结束：若调用了 Tavily 但全程未返回有效结果，通知用户
+                    if tracker["tavily_error_count"] > 0 and not tracker["tavily_success"]:
+                        await matcher.send(
+                            MessageSegment.text(f"⚠️ Tavily服务异常，检索过程失败{tracker['tavily_error_count']}次")
+                        )
             else:
                 result = await tool["func"](**args)
+
             print(f"[INFO] 工具响应：{result}")
 
             tool_res_msg = ChatMessage(
@@ -167,7 +181,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             )
             messages.append(tool_res_msg)
     else:
-        final_content = "搜不到呢，你要不换个关键词试试"
+        final_content = "AI暂时无法响应，请稍后重试！"
 
     # 添加至记忆中
     sender_name = event.sender.card or event.sender.nickname or ""

@@ -1,9 +1,9 @@
 from .registry import register_tool
+from .context import current_search_tracker
 from typing import Literal
 from nonebot import get_plugin_config
 from ..config import AiChatConfig
 import httpx
-import uuid
 
 
 @register_tool(
@@ -48,10 +48,23 @@ async def web_search(query: str,
         payload["exclude_domains"] = exclude_domains
 
     results = await web_search_by_tavily(payload)
+    tracker = current_search_tracker.get()
     if not results:
+        # API 调用失败（超时等），更新错误计数
+        if tracker is not None:
+            tracker["tavily_error_count"] += 1
         return "Error: Tavily web searcher does not return any results."
     else:
-        return _search_result_payload(results)
+        formatted = _search_result_payload(results)
+        if not formatted:
+            # Tavily 返回了响应但内容为空
+            if tracker is not None:
+                tracker["tavily_error_count"] += 1
+        else:
+            # 成功获取到有效搜索结果
+            if tracker is not None:
+                tracker["tavily_success"] = True
+        return formatted
 
 
 async def web_search_by_tavily(payload) -> dict:

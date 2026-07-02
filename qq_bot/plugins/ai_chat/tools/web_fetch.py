@@ -27,7 +27,7 @@ async def web_fetch(urls: list):
 
     results = await web_fetch_by_tavily(payload)
     if not results:
-        return "Error: Tavily web searcher does not return any results."
+        return "Error: Tavily web fetcher does not return any results."
     else:
         return _fetch_result_payload(results)
 

@@ -41,9 +41,10 @@ class BaseSubAgent(ABC):
                     model=self.model,
                     tools=self.tools
                 )
+                # 如果没有工具调用，则直接返回内容
                 if not response.tool_calls:
                     final_content = response.content or "AI暂时无法响应"
-                    print(f"[INFO] Sub Agent工具最终响应：{final_content}")
+                    # print(f"[INFO] Sub Agent工具最终响应：{final_content}")
                     # 本轮没有工具调用触发就结束本轮循环
                     break
                 
@@ -68,6 +69,7 @@ class BaseSubAgent(ABC):
             else:
                 final_content = fail_msg
                 return final_content
+        
         except Exception as e:
             import traceback
             print(f"[ERROR] Sub Agent '{self.agent_name}' 执行异常: {type(e).__name__}: {e}")
