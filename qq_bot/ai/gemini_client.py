@@ -1,6 +1,7 @@
 import httpx
 import json
 import uuid
+import asyncio
 from typing import Any
 from .types import ChatMessage, ChatResponse
 
@@ -14,9 +15,25 @@ class Geminiclient():
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
 
         payload = self._build_gemini_payload(messages = messages, tools = tools, **kwargs, )
-        try:
-            resp = await self._client.post(url, json=payload)
-        except Exception:
+        max_retries = 3
+        last_error: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                resp = await self._client.post(url, json=payload)
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt  # 1s, 2s, 4s 指数退避
+                    print(
+                        f"[WARN] Gemini API 调用失败 (第{attempt + 1}/{max_retries}次): "
+                        f"{type(e).__name__}，{wait}s 后重试..."
+                    )
+                    await asyncio.sleep(wait)
+
+        if last_error is not None:
+            print(f"[ERROR] Gemini API 调用失败 (已重试{max_retries}次): {type(last_error).__name__}: {last_error}")
             return ChatResponse(content="Gemini暂时无法响应，请稍后重试")
 
         return self._parse_response(resp.json())

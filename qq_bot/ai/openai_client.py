@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 from typing import Any
 from .types import ChatMessage, ChatResponse
 
@@ -43,16 +44,31 @@ class Openaiclient:
         # 工具改为由caller传入
         if tools:
             payload["tools"] = tools
-
-        try:
-            print(f"payload:{payload}")
-            resp = await self._client.post(
-                url = self.base_url,
-                headers = headers,
-                json = payload
+        # 加入请求重试机制，最多尝试3次请求
+        max_retries = 3
+        last_error: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                resp = await self._client.post(
+                    url=self.base_url,
+                    headers=headers,
+                    json=payload,
                 )
-            print(f"resp:{resp}")
-        except Exception as e:
+                print(f"[INFO] 模型层openai_resp:{resp}")
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt  # 1s, 2s, 4s 指数退避
+                    print(
+                        f"[WARN] API 调用失败 (第{attempt + 1}/{max_retries}次): "
+                        f"{type(e).__name__}，{wait}s 后重试..."
+                    )
+                    await asyncio.sleep(wait)
+
+        if last_error is not None:
+            print(f"[ERROR] API 调用失败 (已重试{max_retries}次): {type(last_error).__name__}: {last_error}")
             return ChatResponse(content="AI暂时无法响应，请稍后重试")
         """
         返回内容解析

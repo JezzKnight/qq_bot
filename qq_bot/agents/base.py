@@ -44,8 +44,6 @@ class BaseSubAgent(ABC):
                 # 如果没有工具调用，则直接返回内容
                 if not response.tool_calls:
                     final_content = response.content or "AI暂时无法响应"
-                    # print(f"[INFO] Sub Agent工具最终响应：{final_content}")
-                    # 本轮没有工具调用触发就结束本轮循环
                     break
                 
                 assistant_msg = ChatMessage(role="assistant", tool_calls = response.tool_calls, raw_parts=response.raw_parts)
@@ -65,7 +63,6 @@ class BaseSubAgent(ABC):
                         content = result,
                         tool_call_id = tc["id"],
                     ))
-            # for循环正常break就忽略else，未触发循环结束则触发else
             else:
                 final_content = fail_msg
                 return final_content

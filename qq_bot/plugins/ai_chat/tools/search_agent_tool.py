@@ -31,7 +31,7 @@ async def search_agent(task: str, model: str,):
     # else:
     #     client = Openaiclient(base_url=config.ai_base_url, api_key=config.ai_api_key)
     # 构建sub agent的工具列表
-    tools = get_tools_schema("web_search","get_current_time","web_fetch")
+    tools = get_tools_schema("web_search","web_fetch")
     subagent = SearchAgent(client, tools, model, task, TOOLS)
     search_res = await subagent.execute(fail_msg="检索任务失败")
     return search_res

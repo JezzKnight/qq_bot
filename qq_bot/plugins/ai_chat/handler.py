@@ -181,7 +181,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             )
             messages.append(tool_res_msg)
     else:
-        final_content = "AI暂时无法响应，请稍后重试！"
+        final_content = "AI暂时无法响应，请稍后重试"
 
     # 添加至记忆中
     sender_name = event.sender.card or event.sender.nickname or ""
