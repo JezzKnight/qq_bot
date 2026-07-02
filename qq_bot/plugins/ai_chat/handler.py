@@ -1,9 +1,10 @@
 import json
 from datetime import datetime
+from typing import cast
 from .config import AiChatConfig
 from ...ai.types import ChatMessage
 from . import lifecycle
-from .utils import spilt_message, extract_images
+from .utils import split_message, extract_images, scan_and_save_members, get_group_members
 from .memory_writing import get_memory
 from .client_factory import get_client_for_model
 from .long_term_memory import load_memory_for_context
@@ -58,7 +59,17 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     memory_prompt = await load_memory_for_context()
     system_prompt = config.system_prompt
     # 多用户提示词注入
-    if is_group:
+    if isinstance(event, GroupMessageEvent):
+        member_info = get_group_members(event.group_id)
+        if not member_info:
+            bot = cast(Bot, nonebot.get_bot())
+            success = await scan_and_save_members(bot, event)
+            if success:
+                member_info = get_group_members(event.group_id)
+        # API 也失败时给兜底
+        if not member_info:
+            member_info = "<group_participants>\n  <!-- 暂无群成员信息 -->\n</group_participants>"
+
         group_prompt = (
             f"""
             ### 最高优先级：多用户身份规则
@@ -70,13 +81,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
 
             ### 已知群成员清单
             以下是本群部分已知成员的 id 和 name 映射，用于辨识身份时参考：
-            <group_participants>
-              <user id="632180554" name="SyngUp！的秦谷美铃本人"/>
-              <user id="3215481708" name="非人哉"/>
-              <user id="1368030978" name="新杨XIYAG"/>
-              <user id="1136084891" name="问问AI本人"/>
-              <user id="1158522916" name="你喷nm"/>
-            </group_participants>
+            {member_info}
             注意：此清单可能不完整，新成员或未记录的用户不会出现在清单中。遇到清单中没有的用户时，以消息中的 <user identity> 标签为准。
 
             #### 身份铁律（不可违反）
@@ -170,7 +175,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
 
     if is_group:
         # msg = MessageSegment.at(event.user_id) + MessageSegment.text(final_content)
-        for i in spilt_message(final_content):
+        for i in split_message(final_content):
             await matcher.send(MessageSegment.text(i))
         await matcher.finish()
     else:

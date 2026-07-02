@@ -1,11 +1,7 @@
-from pathlib import Path
 from nonebot import on_command
-from nonebot import get_plugin_config
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, MessageSegment
-from nonebot_plugin_localstore import get_plugin_data_dir
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
-from ..config import AiChatConfig
 
 COMMANDS = {
       "pixiv": {
