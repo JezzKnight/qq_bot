@@ -62,6 +62,14 @@ class MemoryManager:
 
         return int(chinese_chars * 2 + english_words * 1.3)
     
+    async def get_history_by_date(
+        self, session_id: str, date_str: str, limit: int | None = None,
+    ) -> list[dict]:
+        """按日期查询消息，返回原始 dict 列表（含 created_at）"""
+        return await self._repo.get_messages_by_date(
+            session_id=session_id, date_str=date_str, limit=limit,
+        )
+
     async def close(self) -> None:
         await self._repo.close()
 

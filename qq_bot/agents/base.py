@@ -33,7 +33,7 @@ class BaseSubAgent(ABC):
         content = self._build_task_prompt(**kwargs)
         # 做一个空内容的兜底
         if content:
-            messages.append(ChatMessage(role= "user", content=f"搜索任务：{content}\n\n请开始搜索。"))
+            messages.append(ChatMessage(role= "user", content=content))
         try:
             for _ in range(self.max_rounds):
                 response = await self.client.chat(

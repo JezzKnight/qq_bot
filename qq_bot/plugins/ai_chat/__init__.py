@@ -12,6 +12,7 @@ from .commands import get_pixiv
 from .commands import switch_model
 from .commands import help
 from .commands import scan_members
+from .commands import list_reminders
 
 async def keyword_rule(event: Event) -> bool:
     """

@@ -46,6 +46,12 @@ class MemoryRepository(Protocol):
           ...
 
 
+      async def get_messages_by_date(
+          self, session_id: str, date_str: str, limit: int | None = None,
+      ) -> list[dict]:
+          """按日期查询消息，date_str 格式 "2026-07-03" """
+          ...
+
       async def get_message_count(self, session_id: str) -> int:
           """返回某会话的消息总数。新会话返回 0。"""
           ...

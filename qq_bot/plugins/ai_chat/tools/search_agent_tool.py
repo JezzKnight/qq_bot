@@ -26,10 +26,6 @@ async def search_agent(task: str, model: str,):
     # 在此处构造client然后注入
     config = get_plugin_config(AiChatConfig)
     client = await get_client_for_model(config, model)
-    # if "gemini" in model.lower():
-    #     client = Geminiclient(api_key=config.gemini_api_key)
-    # else:
-    #     client = Openaiclient(base_url=config.ai_base_url, api_key=config.ai_api_key)
     # 构建sub agent的工具列表
     tools = get_tools_schema("web_search","web_fetch")
     subagent = SearchAgent(client, tools, model, task, TOOLS)
