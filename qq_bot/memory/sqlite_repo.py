@@ -154,6 +154,64 @@ class SqliteRepository:  # 不需要显式写 (MemoryRepository)
         return row[0] if row else 0
 
 
+    async def get_messages_by_date(
+        self,
+        session_id: str,
+        date_str: str,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """按日期查询消息（日期格式："2026-07-03"）
+
+        created_at 为 SQLite datetime('now') 格式 "YYYY-MM-DD HH:MM:SS"，
+        字符串比较等价于时间顺序，无需转换。
+        """
+        conn = await self._get_conn()
+        start = f"{date_str} 00:00:00"
+        end = f"{date_str} 23:59:59"
+
+        if limit is not None:
+            cursor = await conn.execute(
+                """SELECT role, sender_name, content, tool_call_id, tool_calls,
+                          images, created_at
+                   FROM messages
+                   WHERE session_id = ?
+                     AND created_at >= ?
+                     AND created_at <= ?
+                   ORDER BY id ASC
+                   LIMIT ?""",
+                (session_id, start, end, limit),
+            )
+        else:
+            cursor = await conn.execute(
+                """SELECT role, sender_name, content, tool_call_id, tool_calls,
+                          images, created_at
+                   FROM messages
+                   WHERE session_id = ?
+                     AND created_at >= ?
+                     AND created_at <= ?
+                   ORDER BY id ASC""",
+                (session_id, start, end),
+            )
+
+        rows = await cursor.fetchall()
+        result: list[dict] = []
+        for row in rows:
+            msg = {
+                "role": row["role"],
+                "content": row["content"],
+                "created_at": row["created_at"],
+            }
+            if row["sender_name"] is not None:
+                msg["sender_name"] = row["sender_name"]
+            if row["tool_call_id"] is not None:
+                msg["tool_call_id"] = row["tool_call_id"]
+            if row["tool_calls"] is not None:
+                msg["tool_calls"] = json.loads(row["tool_calls"])
+            if row["images"] is not None:
+                msg["images"] = json.loads(row["images"])
+            result.append(msg)
+        return result
+
     async def close(self) -> None:
         if self._conn is not None:
             await self._conn.close()
