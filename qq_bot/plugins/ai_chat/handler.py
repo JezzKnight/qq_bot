@@ -116,7 +116,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "recall_memory")
+            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "cancel_reminder", "schedule_reminder")
         )
         # 如果没有工具调用就直接结束循环正常输出
         if not response.tool_calls:
@@ -158,9 +158,13 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     await memory.append(session_id, sender_name, content, final_content)
 
     if is_group:
-        # msg = MessageSegment.at(event.user_id) + MessageSegment.text(final_content)
-        for i in spilt_message(final_content):
-            await matcher.send(MessageSegment.text(i))
+        chunks = spilt_message(final_content)
+        for idx, chunk in enumerate(chunks):
+            if idx == 0:
+                msg = MessageSegment.at(event.user_id) + MessageSegment.text("\n" + chunk)
+            else:
+                msg = MessageSegment.text(chunk)
+            await matcher.send(msg)
         await matcher.finish()
     else:
         msg = MessageSegment.text(final_content)

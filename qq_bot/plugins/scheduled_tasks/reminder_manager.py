@@ -73,6 +73,15 @@ async def cancel_reminder(job_id: str) -> bool:
     return await _repo.cancel(job_id)
 
 
+async def list_by_target(
+    target_type: str, target_id: str, status: str | None = "pending",
+) -> list[Reminder]:
+    """查询指定目标的提醒列表，默认只返回 pending 状态"""
+    if _repo is None:
+        raise RuntimeError("ReminderManager 未初始化")
+    return await _repo.get_by_target(target_type, target_id, status)
+
+
 async def _fire_reminder(job_id: str):
     """APScheduler 回调 —— 根据 task_type 分支处理 reminder / agent_task"""
     if _repo is None:

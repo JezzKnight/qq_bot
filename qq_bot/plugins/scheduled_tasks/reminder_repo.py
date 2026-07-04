@@ -19,6 +19,22 @@ class Reminder:
     status: str = "pending"              # "pending"（等待触发） | "fired"（已完成） | "cancelled"（被取消）
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
+def _row_to_reminder(row) -> Reminder:
+    """将数据库行转换为 Reminder 对象"""
+    return Reminder(
+        id=row["id"],
+        task_type=row["task_type"],
+        remind_at=row["remind_at"],
+        message=row["message"],
+        target_type=row["target_type"],
+        target_id=row["target_id"],
+        creator_user_id=row["creator_user_id"],
+        job_id=row["job_id"],
+        status=row["status"],
+        created_at=row["created_at"],
+    )
+
+
 class ReminderRepository:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -113,23 +129,7 @@ class ReminderRepository:
             (datetime.now().isoformat(),), #?
         )
         rows = await cursor.fetchall()
-        
-        return [
-            Reminder(
-                id=row["id"],
-                task_type=row["task_type"],
-                remind_at=row["remind_at"],
-                message=row["message"],
-                target_type=row["target_type"],
-                target_id=row["target_id"],
-                creator_user_id=row["creator_user_id"],
-                job_id=row["job_id"],
-                status=row["status"],
-                created_at=row["created_at"],
-            )
-            for row in rows
-        ]
-
+        return [_row_to_reminder(row) for row in rows]
 
     async def get_by_job_id(self, job_id) -> Optional[Reminder]:
         """通过job_id来获取定时任务详情"""
@@ -141,21 +141,30 @@ class ReminderRepository:
         info = await cursor.fetchone()
         if info is None:
             return None
-        
-        return Reminder(
-                id=info["id"],
-                task_type=info["task_type"],
-                remind_at=info["remind_at"],
-                message=info["message"],
-                target_type=info["target_type"],
-                target_id=info["target_id"],
-                creator_user_id=info["creator_user_id"],
-                job_id=info["job_id"],
-                status=info["status"],
-                created_at=info["created_at"],
-            )
-        
+        return _row_to_reminder(info)
 
+
+    async def get_by_target(
+        self, target_type: str, target_id: str, status: str | None = None,
+    ) -> list[Reminder]:
+        """查询指定目标（群/私聊）的提醒列表，按触发时间升序"""
+        conn = await self._get_conn()
+        if status is not None:
+            cursor = await conn.execute(
+                """SELECT * FROM reminders
+                   WHERE target_type = ? AND target_id = ? AND status = ?
+                   ORDER BY remind_at ASC""",
+                (target_type, target_id, status),
+            )
+        else:
+            cursor = await conn.execute(
+                """SELECT * FROM reminders
+                   WHERE target_type = ? AND target_id = ?
+                   ORDER BY remind_at ASC""",
+                (target_type, target_id),
+            )
+        rows = await cursor.fetchall()
+        return [_row_to_reminder(row) for row in rows]
 
     async def close(self):
         """reminder的关闭函数"""
