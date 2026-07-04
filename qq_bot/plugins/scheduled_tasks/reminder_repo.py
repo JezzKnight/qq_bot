@@ -9,7 +9,7 @@ from typing import Optional
 @dataclass
 class Reminder:
     """一条提醒记录"""
-    id: Optional[int] = None                # 数据库自增 ID
+    id: int | None = None                # 数据库自增 ID
     remind_at: str = ""                     # ISO 8601 时间 "2026-06-30T00:00:00"
     message: str = ""                       # 推送内容 "该睡觉了！"
     target_type: str = ""                   # "group" | "private"
@@ -24,6 +24,7 @@ class ReminderRepository:
         self.db_path = db_path
         self._lock = asyncio.Lock()
         self._conn:Optional[aiosqlite.Connection] = None
+
 
     async def _get_conn(self) -> aiosqlite.Connection:
         """获取储存计划任务的数据库连接"""
@@ -40,16 +41,29 @@ class ReminderRepository:
             await self._conn.execute("PRAGMA foreign_keys=ON;")
         return self._conn
     
+
     async def init(self) -> None:
+        """初始化表"""
         conn = await self._get_conn()
         await conn.executescript("""
             CREATE TABLE IF NOT EXISTS reminders (
-                id  INT PRIMARY KEY,
-                remind_at  TEXT NOT NULL,
-                message  TEXT NOT NULL,
-                target    TEXT DEFAULT '{}'
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                remind_at       TEXT NOT NULL,
+                message         TEXT NOT NULL,
+                target_type     TEXT NOT NULL DEFAULT '',
+                target_id       TEXT NOT NULL DEFAULT '',
+                creator_user_id TEXT NOT NULL DEFAULT '',
+                job_id          TEXT NOT NULL DEFAULT '',
+                status          TEXT NOT NULL DEFAULT 'pending',
+                created_at      TEXT NOT NULL DEFAULT (datetime('now'))
             );
-            
+
+            CREATE INDEX IF NOT EXISTS idx_reminders_job_id
+            ON reminders(job_id);
+
+            CREATE INDEX IF NOT EXISTS idx_reminders_status_remind_at
+            ON reminders(status, remind_at);
+
             CREATE TABLE IF NOT EXISTS messages (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id   TEXT NOT NULL,
@@ -68,6 +82,94 @@ class ReminderRepository:
         """)
         await conn.commit()
     
+
+    async def save(self, r:Reminder) -> Reminder:
+        """保存schedule数据到数据库"""
+        conn = await self._get_conn()
+        cursor = await conn.execute(
+            """
+            INSERT INTO reminders
+            (remind_at, message, target_type, target_id, creator_user_id, job_id, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (r.remind_at, r.message, r.target_type, r.target_id, r.creator_user_id, r.job_id, r.status, r.created_at)
+        )
+        r.id = cursor.lastrowid #?
+        await conn.commit()
+        return r
+    
+
+    async def mark_fired(self, job_id):
+        """状态流转，将任务状态设定为'已完成'"""
+        conn = await self._get_conn()
+        await conn.execute(
+            "UPDATE reminders SET status='fired' WHERE job_id=?",
+            (job_id,),
+        )
+        await conn.commit()
+
+
+    async def cancel(self, job_id) -> bool:
+        """状态流转，将'待执行'任务状态设定为'取消'"""
+        conn = await self._get_conn()
+        cursor = await conn.execute(
+            "UPDATE reminders SET status='cancelled' WHERE job_id=? AND status='pending'",
+            (job_id,),
+        )
+        await conn.commit()
+        return cursor.rowcount > 0
+
+
+    async def get_all_pending(self) -> list[Reminder]:
+        """bot 重启时用：加载所有未触发的提醒"""
+        conn = await self._get_conn()
+        cursor = await conn.execute(
+            "SELECT * FROM reminders WHERE status='pending' AND remind_at > ?",
+            (datetime.now().isoformat(),), #?
+        )
+        rows = await cursor.fetchall()
+        
+        return [
+            Reminder(
+                id=row["id"],
+                remind_at=row["remind_at"],
+                message=row["message"],
+                target_type=row["target_type"],
+                target_id=row["target_id"],
+                creator_user_id=row["creator_user_id"],
+                job_id=row["job_id"],
+                status=row["status"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+
+    async def get_by_job_id(self, job_id) -> Optional[Reminder]:
+        """通过job_id来获取定时任务详情"""
+        conn = await self._get_conn()
+        cursor = await conn.execute(
+            "SELECT * FROM reminders WHERE job_id=?",
+            (job_id,), #?
+        )
+        info = await cursor.fetchone()
+        if info is None:
+            return None
+        
+        return Reminder(
+                id=info["id"],
+                remind_at=info["remind_at"],
+                message=info["message"],
+                target_type=info["target_type"],
+                target_id=info["target_id"],
+                creator_user_id=info["creator_user_id"],
+                job_id=info["job_id"],
+                status=info["status"],
+                created_at=info["created_at"],
+            )
+        
+
+
     async def close(self):
         """reminder的关闭函数"""
         if self._conn is not None:
