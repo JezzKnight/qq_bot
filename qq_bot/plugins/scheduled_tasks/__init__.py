@@ -6,9 +6,6 @@ from nonebot_plugin_localstore import get_plugin_data_dir
 from .scheduler import SchedulerGateway
 from .reminder_manager import init as init_manager, _fire_reminder
 
-# 从 AI 工具层导入工厂函数
-from qq_bot.plugins.ai_chat.tools.schedule_reminder import build_scheduled_agent
-
 __plugin_meta__ = PluginMetadata(
     name="定时任务",
     description="提醒 + 智能定时任务调度",
@@ -26,6 +23,9 @@ _repo = None
 @_driver.on_startup
 async def _startup():
     global _repo
+
+    # 延迟导入以打破 scheduled_tasks → ai_chat 的加载时依赖
+    from qq_bot.plugins.ai_chat.tools.schedule_reminder import build_scheduled_agent
 
     data_dir = get_plugin_data_dir()
     gateway = SchedulerGateway(_scheduler)

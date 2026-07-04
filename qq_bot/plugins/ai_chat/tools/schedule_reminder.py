@@ -8,8 +8,6 @@ from qq_bot.plugins.ai_chat.client_factory import get_client_for_model
 from qq_bot.plugins.ai_chat.tools.registry import get_tools_schema, TOOLS
 from qq_bot.agents.schedule_agent import ScheduleTaskAgent
 
-from ...scheduled_tasks.reminder_manager import create_reminder
-
 
 async def _parse_user_intended_time(text:str) -> str | None:
     """将用户的口语时间表达解析为 ISO 8601
@@ -103,6 +101,9 @@ async def build_scheduled_agent(prompt: str) -> ScheduleTaskAgent:
 )
 async def schedule_reminder_tool(remind_at: str, task_type: str, message: str = "") -> str:
     """AI调用的提醒创建工具"""
+    # 延迟导入以打破与 scheduled_tasks 插件的循环依赖
+    from ...scheduled_tasks.reminder_manager import create_reminder
+
     # 直接从current_scope中获取数据
     scope = current_scope.get()
     if scope is None:

@@ -4,7 +4,6 @@ AI 在对话中根据用户意图调用。只允许取消当前会话下的提�
 """
 from .registry import register_tool
 from .context import current_scope
-from ...scheduled_tasks.reminder_manager import cancel_reminder
 
 
 def _scope_to_parts() -> tuple[str, str] | None:
@@ -42,7 +41,7 @@ async def cancel_reminder_tool(job_id: str) -> str:
     if scope_info is None:
         return "❌ 无法确定当前会话上下文。"
 
-    from ...scheduled_tasks.reminder_manager import _repo
+    from ...scheduled_tasks.reminder_manager import _repo, cancel_reminder
 
     if _repo is None:
         return "❌ 提醒系统未初始化。"

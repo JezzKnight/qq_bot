@@ -22,9 +22,11 @@ from .registry import register_tool, get_tools_schema, TOOLS
                 "required": ["task"]
                 }
 )
-async def search_agent(task: str, model: str,):
+async def search_agent(task: str, model: str | None = None):
     # 在此处构造client然后注入
     config = get_plugin_config(AiChatConfig)
+    if model is None:
+        model = config.ai_model
     client = await get_client_for_model(config, model)
     # 构建sub agent的工具列表
     tools = get_tools_schema("web_search","web_fetch")
