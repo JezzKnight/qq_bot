@@ -61,7 +61,7 @@ class SearchAgent(BaseSubAgent):
 
     def __init__(self, client, tools: list[dict], model: str, task: str, tool_registry:dict[str, dict]):
         super().__init__(client, tools, model, tool_registry)
-        # 为提示词注入当前事件 
+        # 注入当前时间和任务 
         now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = self.system_prompt.replace("{current_time}", now)
         
@@ -69,7 +69,9 @@ class SearchAgent(BaseSubAgent):
         # self.system_prompt = self.system_prompt.replace("{user_query}", self.task)
     
     def _build_task_prompt(self, **kwargs) -> str:
-        # 两层保底，main agent没生成task内容时直接用用户输入，用户没输入就返回空
-        task = kwargs.get("task") or self.task or ""
+        """构造user输入"""
+        # 两层保底，main agent没生成搜索任务内容时直接用用户输入，用户没输入就返回空
+        context = kwargs.get("task") or self.task or ""
+        task = f"搜索任务：{context}\n\n请开始搜索。"
         return task
     

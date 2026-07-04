@@ -1,4 +1,3 @@
-import json
 import aiosqlite
 import asyncio
 from dataclasses import dataclass, field
@@ -10,13 +9,14 @@ from typing import Optional
 class Reminder:
     """一条提醒记录"""
     id: int | None = None                # 数据库自增 ID
-    remind_at: str = ""                     # ISO 8601 时间 "2026-06-30T00:00:00"
-    message: str = ""                       # 推送内容 "该睡觉了！"
-    target_type: str = ""                   # "group" | "private"
-    target_id: str = ""                     # 群号或用户 QQ 号
-    creator_user_id: str = ""               # 谁创建的（用于权限控制）
-    job_id: str = ""                        # APScheduler job ID，用于取消
-    status: str = "pending"                 # "pending"（等待触发） | "fired"（已完成） | "cancelled"（被取消）
+    remind_at: str = ""                  # ISO 8601 时间 "2026-06-30T00:00:00"
+    task_type: str = "reminder"          # "reminder"（简单提醒）| "agent_task"（智能任务）
+    message: str = ""                    # 推送内容 "该睡觉了！"
+    target_type: str = ""                # "group" | "private"
+    target_id: str = ""                  # 群号或用户 QQ 号
+    creator_user_id: str = ""            # 谁创建的（用于权限控制）
+    job_id: str = ""                     # APScheduler job ID，用于取消
+    status: str = "pending"              # "pending"（等待触发） | "fired"（已完成） | "cancelled"（被取消）
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 class ReminderRepository:
@@ -48,6 +48,7 @@ class ReminderRepository:
         await conn.executescript("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_type       TEXT NOT NULL,
                 remind_at       TEXT NOT NULL,
                 message         TEXT NOT NULL,
                 target_type     TEXT NOT NULL DEFAULT '',
@@ -63,22 +64,6 @@ class ReminderRepository:
 
             CREATE INDEX IF NOT EXISTS idx_reminders_status_remind_at
             ON reminders(status, remind_at);
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id   TEXT NOT NULL,
-                sender_name  TEXT,
-                role         TEXT NOT NULL,
-                content      TEXT,
-                tool_call_id TEXT,
-                tool_calls   TEXT,
-                images       TEXT,
-                created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_messages_session_time
-            ON messages(session_id, id);
         """)
         await conn.commit()
     
@@ -89,10 +74,10 @@ class ReminderRepository:
         cursor = await conn.execute(
             """
             INSERT INTO reminders
-            (remind_at, message, target_type, target_id, creator_user_id, job_id, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (task_type, remind_at, message, target_type, target_id, creator_user_id, job_id, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (r.remind_at, r.message, r.target_type, r.target_id, r.creator_user_id, r.job_id, r.status, r.created_at)
+            (r.task_type, r.remind_at, r.message, r.target_type, r.target_id, r.creator_user_id, r.job_id, r.status, r.created_at)
         )
         r.id = cursor.lastrowid #?
         await conn.commit()
@@ -132,6 +117,7 @@ class ReminderRepository:
         return [
             Reminder(
                 id=row["id"],
+                task_type=row["task_type"],
                 remind_at=row["remind_at"],
                 message=row["message"],
                 target_type=row["target_type"],
@@ -150,7 +136,7 @@ class ReminderRepository:
         conn = await self._get_conn()
         cursor = await conn.execute(
             "SELECT * FROM reminders WHERE job_id=?",
-            (job_id,), #?
+            (job_id,),
         )
         info = await cursor.fetchone()
         if info is None:
@@ -158,6 +144,7 @@ class ReminderRepository:
         
         return Reminder(
                 id=info["id"],
+                task_type=info["task_type"],
                 remind_at=info["remind_at"],
                 message=info["message"],
                 target_type=info["target_type"],
