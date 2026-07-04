@@ -37,9 +37,7 @@ async def build_scheduled_agent(prompt: str) -> ScheduleTaskAgent:
     """构造定时任务 Agent 触发时由 _fire_reminder 调用"""
     config = get_plugin_config(AiChatConfig)
     client = await get_client_for_model(config, config.ai_model)
-    tools = get_tools_schema(
-        "web_search", "web_fetch", "search_agent",
-    )
+    tools = get_tools_schema("search_agent", "query_chat_history")
     return ScheduleTaskAgent(
         client=client,
         tools=tools,
