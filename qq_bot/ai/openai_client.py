@@ -10,7 +10,7 @@ class Openaiclient:
         self.api_key = api_key
         self.default_model = "deepseek-chat"
         # 在init中创建对象复用连接池
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
 
     # **kwargs就是一个普通字典，操作方法与字典一致
     async def chat(self, messages: list[ChatMessage], model: str | None = None, tools = None, **kwargs) -> ChatResponse:

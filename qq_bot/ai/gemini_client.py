@@ -8,7 +8,7 @@ from .types import ChatMessage, ChatResponse
 class Geminiclient():
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
 
     async def chat(self, messages: list[ChatMessage], model: str | None=None, tools = None, **kwargs):
         model_name = model or "gemini-3.5-flash"
