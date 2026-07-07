@@ -6,6 +6,7 @@ from typing import Callable, Awaitable
 from nonebot import get_bot
 
 from .reminder_repo import Reminder, ReminderRepository
+from nonebot.adapters.onebot.v11 import MessageSegment
 from .scheduler import SchedulerGateway
 
 
@@ -83,7 +84,7 @@ async def list_by_target(
 
 
 async def _fire_reminder(job_id: str):
-    """APScheduler 回调 —— 根据 task_type 分支处理 reminder / agent_task"""
+    """APScheduler 回调，根据 task_type 分支处理 reminder / agent_task"""
     if _repo is None:
         return
 
@@ -101,12 +102,13 @@ async def _fire_reminder(job_id: str):
             )
             push_content = f"⏰ 定时任务\n\n{result_text}"
         else:
-            push_content = f"⏰ 提醒\n\n{reminder.message}"
+            push_content = f"⏰ 提醒：{reminder.message}"
 
         bot = get_bot()
         if reminder.target_type == "group":
+            # 群聊提醒添加艾特功能
             await bot.send_group_msg(
-                group_id=int(reminder.target_id), message=push_content,
+                group_id=int(reminder.target_id), message=f"{MessageSegment.at(reminder.creator_user_id)}\n{push_content}",
             )
         elif reminder.target_type == "private":
             await bot.send_private_msg(
