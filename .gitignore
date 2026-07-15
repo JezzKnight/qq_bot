@@ -148,3 +148,4 @@ test/
 .vscode/
 AGENTS.md
 CLAUDE.md
+run_bot.bat
