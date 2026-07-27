@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from typing import cast
+from prompts.service import prompt_service
 from .config import AiChatConfig
 from ...ai.types import ChatMessage
 from . import lifecycle
@@ -57,7 +58,8 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     history = await memory.get_history(session_id)
     # 构建prompt
     memory_prompt = await load_memory_for_context()
-    system_prompt = config.system_prompt
+    time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+    system_part = prompt_service.get_system_prompt(current_time=time_now)
     # 多用户提示词注入
     if isinstance(event, GroupMessageEvent):
         member_info = get_group_members(event.group_id)
@@ -68,53 +70,22 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                 member_info = get_group_members(event.group_id)
         # API 也失败时给兜底
         if not member_info:
-            member_info = "<group_participants>\n  <!-- 暂无群成员信息 -->\n</group_participants>"
+            member_info = "暂无群成员信息"
 
-        group_prompt = (
-            f"""
-            ### 最高优先级：多用户身份规则
-            当前是群聊环境。聊天记录中的每一条消息都是独立用户发送的。
-
-            每条消息以 <user identity id="xxx" name="yyy"/> 标签开头：
-            - id = 用户的唯一身份标识（不可变）
-            - name = 用户的当前显示昵称（群名片，可变）
-
-            ### 已知群成员清单
-            以下是本群部分已知成员的 id 和 name 映射，用于辨识身份时参考：
-            {member_info}
-            注意：遇到清单中没有的用户时，以消息中的 <user identity> 标签为准。
-
-            #### 身份铁律（不可违反）
-            1. id 不同 = 不同的人。这是铁律
-            2. 两个用户就算记忆内容一模一样，只要 id 不同，就是不同的人
-            3. 不允许用话题相似度或记忆相似度合并用户
-            4. 不允许把用户 A 的记忆或偏好应用到用户 B 身上
-
-            #### 身份认知规则
-            1. 当前发言人: uid="{event.user_id}", name="{sender_name}"
-            2. 用户问"我是谁" → 直接读当前消息 <user identity> 标签的 name 属性回答。如果该用户在长期记忆中有记录的个人信息，再补充
-            3. 用户让你用特定称呼叫他（如"叫我xx"）→ 调用 save_memory 保存该偏好，scope="personal"
-            4. 用户问其他成员的信息 → 从对话历史或记忆索引中查找对应 uid 的信息，用 name 称呼
-            5. 回复中引用其他成员时，使用其最近消息中的 name 称呼，不要输出 id 数字
-            6. 允许自然引用其他用户的已知偏好（如"刚刚张三让我叫他高手"）
-
-            #### 代词解析
-            - "我" = 当前 <user identity> 标签中的 name
-            - "你" = Boooost（你自己）
-            - "他/她" = 优先看离当前消息最近的那条其他用户消息中的 name
-            """
+        group_part = prompt_service.get_group_prompt(
+            user_id=str(event.user_id),
+            user_name=sender_name,
+            member_info=member_info,
         )
     else:
-        group_prompt = f"\n\n你当前正在与 {sender_name} 私聊。"
+        group_part = f"你当前正在与 {sender_name} 私聊。"
     # 多人用户个人长期记忆信息注入
     if memory_prompt:
-        long_term_mem_prompt = f"以下是群聊中可见的长期记忆索引：{memory_prompt}"
+        memory_part = f"以下是群聊中可见的长期记忆索引：{memory_prompt}"
     else:
-        long_term_mem_prompt = ""
+        memory_part = ""
     # 拼接最终的prompt
-    time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-    system_prompt = system_prompt.replace("{current_time}", time_now)
-    final_prompt = f"{group_prompt}\n\n{long_term_mem_prompt}\n\n{system_prompt}"
+    final_prompt = f"{group_part}\n\n{memory_part}\n\n{system_part}"
     messages= [ChatMessage(role="system", content=f"{final_prompt}")]
     # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
@@ -198,4 +169,5 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         await matcher.finish()
     else:
         msg = MessageSegment.text(final_content)
+    
     return await matcher.finish(msg)
