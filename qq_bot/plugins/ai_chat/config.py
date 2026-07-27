@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class AiChatConfig(BaseModel):
     # 继承自pydantic的基类，能够继承两个能力，一、能够自动进行类型校验 二、自动从环境变量读取配置
@@ -140,4 +140,13 @@ class AiChatConfig(BaseModel):
 
     # ── Pixiv访问控制 ──
     proxy: str = ""
-    refresh_token: list = [""]
+    refresh_token: list[str] = []
+
+    @field_validator("refresh_token", mode="before")
+    @classmethod
+    def parse_refresh_token(cls, v: str | list) -> list:
+        """将环境变量中的 JSON 字符串解析为列表"""
+        if isinstance(v, str):
+            import json
+            return json.loads(v)
+        return v
