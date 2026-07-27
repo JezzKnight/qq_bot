@@ -136,10 +136,8 @@ class AiChatConfig(BaseModel):
     reply_max_length: int = 1000                     # 单条消息最大字数
 
     # ── WebSearch配置 ──
-    Tavily_key: str = "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"
-    # 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
-    # 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
+    Tavily_key: str = ""
 
     # ── Pixiv访问控制 ──
     proxy: str = ""
-    refresh_token: list = ["gEu5cg65BX7DNLTl7q5NmIchfsFki2JTpAouzWdswBA"]
+    refresh_token: list = [""]
