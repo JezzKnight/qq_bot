@@ -149,4 +149,4 @@ test/
 AGENTS.md
 CLAUDE.md
 run_bot.bat
-config.py
+qq_bot/plugins/ai_chat/config.py
