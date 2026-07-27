@@ -48,8 +48,11 @@ async def web_fetch_by_tavily(payload) -> dict:
                 headers=header,
                 json=payload,
             )
+            print(f"[DEBUG] Tavily fetch 状态码: {response.status_code}")
+            print(f"[DEBUG] Tavily fetch 响应体: {response.text[:500]}")
             return response.json()
         except httpx.ConnectTimeout:
+            print(f"[ERROR] Tavily fetch 连接超时")
             return {}
 
 
