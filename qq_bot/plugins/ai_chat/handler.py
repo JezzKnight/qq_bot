@@ -103,7 +103,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "cancel_reminder", "schedule_reminder")
+            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
         )
         # 如果没有工具调用就直接结束循环正常输出
         if not response.tool_calls:
