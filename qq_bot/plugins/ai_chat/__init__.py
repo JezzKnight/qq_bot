@@ -13,7 +13,7 @@ from .commands import switch_model
 from .commands import help
 from .commands import scan_members
 from .commands import list_reminders
-from .commands import restart
+from .commands import reboot
 
 async def keyword_rule(event: Event) -> bool:
     """

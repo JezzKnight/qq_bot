@@ -11,7 +11,7 @@ _admin_raw = os.getenv("ADMIN_USERS", "")
 ADMIN_USERS: set[str] = {uid.strip() for uid in _admin_raw.split(",") if uid.strip()}
 
 restart_cmd = on_command(
-    "restart",
+    "reboot",
     rule=to_me(),
     aliases={"重启", "重启服务"},
     block=True,
