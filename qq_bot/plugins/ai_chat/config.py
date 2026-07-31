@@ -7,7 +7,7 @@ class AiChatConfig(BaseModel):
     ai_api_key: str = " "
     gemini_api_key: str = ""
     ai_model: str
-    ai_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="AI的temperature参数在[0,2]之间")
+    ai_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="AI的temperature参数在[0,2]之间")
     ai_max_tokens: int = 16384
 
     # ── 记忆设置 ──

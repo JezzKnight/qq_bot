@@ -27,7 +27,24 @@ class Openaiclient:
         for m in messages:
             msg: dict[str, Any] = {"role": m.role}
             if m.content is not None:
-                msg["content"] = m.content
+                # 图片处理：如果有图片，将 content 转为 OpenAI vision 格式的 content parts 数组
+                if m.images and m.role == "user":
+                    import base64
+                    content_parts: list[dict[str, Any]] = []
+                    if m.content:
+                        content_parts.append({"type": "text", "text": m.content})
+                    for img in m.images:
+                        b64 = base64.b64encode(img.data).decode("utf-8")
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{img.mine_type};base64,{b64}"
+                            }
+                        })
+                    msg["content"] = content_parts
+                else:
+                    msg["content"] = m.content
+            
             if m.tool_calls is not None:
                 msg["tool_calls"] = m.tool_calls
             if m.tool_call_id is not None:
