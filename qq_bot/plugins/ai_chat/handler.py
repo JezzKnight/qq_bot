@@ -26,6 +26,9 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     """主函数，接收用户消息解析处理发送给AI，然后解析回复用户AI的response"""
     # 用内存储存当前是对话状态的scope路径
     sender_name = event.sender.card or event.sender.nickname or "未知用户"
+    # 获取bot对象，cast是typing中的用法，用来告诉语法检测器这个nonebot.get_bot()获取的对象类型一定是Bot
+    bot = cast(Bot, nonebot.get_bot())
+
     if isinstance(event, GroupMessageEvent):
         scope = f"groups/{event.group_id}/{event.user_id}"
     else:
@@ -34,7 +37,20 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     current_sender_name.set(sender_name)
     
     config = get_plugin_config(AiChatConfig)
+    # 获取用户发送内容
     content = event.get_plaintext().strip()
+
+    # 回复功能处理
+    # hasattr用于检测event对象有没有'reply'属性
+    if hasattr(event, 'reply') and event.reply:
+        reply_data = getattr(event, 'reply', None)
+        if reply_data:
+            sender = reply_data.sender.card or reply_data.sender.nickname or "未知"
+            raw = reply_data.raw_message
+            if raw:
+                content = f'[用户引用了 {sender} 的消息："{raw}"]\n{content}'
+                print(repr(content))
+
     # 添加空内容回复规则
     if not content:
         # 通过函数获取路径，直接写死不够鲁棒/直接写路径一直报no such file错误，改用base64编码/错误原因写入的是字符串导致的格式识别错误，现在是通过python解析二进制文件直接传入
@@ -43,6 +59,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         img = MessageSegment.image(file=sticker_path.read_bytes())
         await matcher.finish(img)
         return
+
     # 区分私人对话和群聊对话
     if isinstance(event, GroupMessageEvent):
         session_id = f"group_{event.group_id}"
@@ -64,7 +81,6 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     if isinstance(event, GroupMessageEvent):
         member_info = get_group_members(event.group_id)
         if not member_info:
-            bot = cast(Bot, nonebot.get_bot())
             success = await scan_and_save_members(bot, event)
             if success:
                 member_info = get_group_members(event.group_id)
