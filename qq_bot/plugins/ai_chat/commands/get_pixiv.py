@@ -22,8 +22,9 @@ async def handle_pixiv(event: MessageEvent, matcher: Matcher):
     if not check_cooldown(f"pixiv_{event.user_id}", config.cooldown_seconds):
         await matcher.finish(f"太快啦，请{config.cooldown_seconds}秒后再试")
         return
-    # 指令参数校验
-    mode = event.get_plaintext().replace("/pixiv", "").strip()
+    # 指令参数校验 —— 取第一个空格后的内容作为 mode
+    parts = event.get_plaintext().split(maxsplit=1)
+    mode = parts[1] if len(parts) > 1 else ""
     if mode not in ALLOWED_MODES:
         await matcher.finish("无效参数")
         return
@@ -31,7 +32,7 @@ async def handle_pixiv(event: MessageEvent, matcher: Matcher):
     # 获取事件，模式以及排行榜本地信息
     # 减少一天的正确用法不是直接d-1
     time = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    mode = event.get_plaintext().replace("/pixiv", "").strip() or "day"
+    mode = mode or "day"
     # 主要处理逻辑
     while True:
         info_Path = Path(get_plugin_data_dir()) / "pixiv" / "ranking_info"/ f"{time}-{mode}.json"

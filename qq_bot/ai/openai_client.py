@@ -76,11 +76,12 @@ class Openaiclient:
                 break
             except Exception as e:
                 last_error = e
+                
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt  # 1s, 2s, 4s 指数退避
                     print(
                         f"[WARN] API 调用失败 (第{attempt + 1}/{max_retries}次): "
-                        f"{type(e).__name__}，{wait}s 后重试..."
+                        f"{type(e).__name__}接口返回错误代码{resp.status_code}，{wait}s 后重试..."
                     )
                     await asyncio.sleep(wait)
 
