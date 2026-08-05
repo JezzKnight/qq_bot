@@ -27,9 +27,6 @@ class AiChatConfig(BaseModel):
     # ── 回复设置 ──
     reply_max_length: int = 1000                     # 单条消息最大字数
 
-    # ── WebSearch配置 ──
-    Tavily_key: str = ""
-
     # ── 启动通知 ──
     startup_notify_group: int = 0              # 启动通知目标群号，0 表示不发送
     startup_notify_cooldown: int = 300         # 启动通知冷却期（秒），防止频繁重启刷屏
@@ -45,4 +42,21 @@ class AiChatConfig(BaseModel):
         if isinstance(v, str):
             import json
             return json.loads(v)
+        return v
+
+    # ── WebSearch配置 ──
+    Tavily_key: list[str] = []
+
+    @field_validator("Tavily_key", mode="before")
+    @classmethod
+    def parse_tavily_key(cls, v: str | list) -> list:
+        """解析 Tavily key：支持 JSON 数组、逗号分隔、单值三种格式"""
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("["):
+                import json
+                return json.loads(v)
+            return [k.strip() for k in v.split(",") if k.strip()]
         return v

@@ -1,8 +1,9 @@
-from .registry import register_tool
-from nonebot import get_plugin_config
-from ..config import AiChatConfig
-import httpx
 import uuid
+
+from .registry import register_tool
+from .tavily_client import TavilyClient
+
+_client = TavilyClient()
 
 
 @register_tool(
@@ -33,27 +34,8 @@ async def web_fetch(urls: list):
 
 
 async def web_fetch_by_tavily(payload) -> dict:
-    """tavily爬取操作"""
-    config = get_plugin_config(AiChatConfig)
-    tavily_api_key = config.Tavily_key
-    url = "https://api.tavily.com/extract"
-    header = {
-        "Authorization": f"Bearer {tavily_api_key}",
-        "Content-Type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-        try:
-            response = await client.post(
-                url=url,
-                headers=header,
-                json=payload,
-            )
-            print(f"[DEBUG] Tavily fetch 状态码: {response.status_code}")
-            print(f"[DEBUG] Tavily fetch 响应体: {response.text[:500]}")
-            return response.json()
-        except httpx.ConnectTimeout:
-            print(f"[ERROR] Tavily fetch 连接超时")
-            return {}
+    """tavily 爬取操作（统一走 TavilyClient 的 key 轮换）"""
+    return await _client.extract(payload)
 
 
 def _fetch_result_payload(data: dict):

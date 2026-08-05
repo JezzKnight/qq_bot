@@ -1,10 +1,10 @@
-from .registry import register_tool
-from .context import current_search_tracker
 from typing import Literal
-from nonebot import get_plugin_config
-from ..config import AiChatConfig
-import httpx
 
+from .context import current_search_tracker
+from .registry import register_tool
+from .tavily_client import TavilyClient
+
+_client = TavilyClient()
 
 @register_tool(
     name="web_search",
@@ -68,29 +68,8 @@ async def web_search(query: str,
 
 
 async def web_search_by_tavily(payload) -> dict:
-    """
-    tavily搜索操作
-    """
-    config = get_plugin_config(AiChatConfig)
-    tavily_api_key = config.Tavily_key
-    url = "https://api.tavily.com/search"
-    header = {
-        "Authorization": f"Bearer {tavily_api_key}",
-        "Content-Type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-        try:
-            response = await client.post(
-                url=url,
-                headers=header,
-                json=payload,
-            )
-            print(f"[DEBUG] Tavily search 状态码: {response.status_code}")
-            print(f"[DEBUG] Tavily search 响应体: {response.text[:500]}")
-            return response.json()
-        except httpx.ConnectTimeout:
-            print(f"[ERROR] Tavily search 连接超时")
-            return {}
+    """tavily 搜索操作（统一走 TavilyClient 的 key 轮换）"""
+    return await _client.search(payload)
 
 
 def _search_result_payload(data: dict):
