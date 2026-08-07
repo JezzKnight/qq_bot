@@ -17,6 +17,7 @@ class Geminiclient():
         payload = self._build_gemini_payload(messages = messages, tools = tools, **kwargs, )
         max_retries = 3
         last_error: Exception | None = None
+        resp: httpx.Response | None = None
         for attempt in range(max_retries):
             try:
                 resp = await self._client.post(url, json=payload)
@@ -36,6 +37,7 @@ class Geminiclient():
             print(f"[ERROR] Gemini API 调用失败 (已重试{max_retries}次): {type(last_error).__name__}: {last_error}")
             return ChatResponse(content="Gemini暂时无法响应，请稍后重试")
 
+        assert resp is not None
         return self._parse_response(resp.json())
     
 
@@ -174,6 +176,14 @@ class Geminiclient():
         content_obj = candidate.get("content", {})
         parts = content_obj.get("parts", [])
 
+        # 输入缓存命中 token：优先取 cachedContentTokenCount，兜底扫描 promptTokensDetails 中的 CACHED 模态
+        usage_meta = data.get("usageMetadata") or {}
+        cached_tokens = usage_meta.get("cachedContentTokenCount", 0)
+        if not cached_tokens:
+            for detail in usage_meta.get("promptTokensDetails") or []:
+                if detail.get("modality") == "CACHED":
+                    cached_tokens += detail.get("tokenCount", 0)
+
         # 检查 parts 里有没有 functionCall
         tool_calls = []
         text_parts = []
@@ -198,8 +208,9 @@ class Geminiclient():
             content="\n".join(text_parts) if text_parts else None,
             model=data.get("modelVersion", ""),
             finish_reason=candidate.get("finishReason", ""),
-            prompt_tokens=data.get("usageMetadata", {}).get("promptTokenCount", 0),
-            completion_tokens=data.get("usageMetadata", {}).get("candidatesTokenCount", 0),
+            prompt_tokens=usage_meta.get("promptTokenCount", 0),
+            completion_tokens=usage_meta.get("candidatesTokenCount", 0),
+            cached_tokens=cached_tokens,
             tool_calls=tool_calls if tool_calls else None,   # ←和 Aiclient 一样的格式
             raw_parts=parts if tool_calls else None
       )

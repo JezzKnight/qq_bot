@@ -63,7 +63,9 @@ class Openaiclient:
             payload["tools"] = tools
         # 加入请求重试机制，最多尝试3次请求
         max_retries = 3
+        # 提前定义对象类型
         last_error: Exception | None = None
+        resp: httpx.Response | None = None
         for attempt in range(max_retries):
             try:
                 resp = await self._client.post(
@@ -81,7 +83,7 @@ class Openaiclient:
                     wait = 2 ** attempt  # 1s, 2s, 4s 指数退避
                     print(
                         f"[WARN] API 调用失败 (第{attempt + 1}/{max_retries}次): "
-                        f"{type(e).__name__}接口返回错误代码{resp.status_code}，{wait}s 后重试..."
+                        f"{type(e).__name__}: {e}，{wait}s 后重试..."
                     )
                     await asyncio.sleep(wait)
 
@@ -115,15 +117,21 @@ class Openaiclient:
         'system_fingerprint': 'fp_8b330d02d0_prod0820_fp8_kvcache_20260402'
         }
         """
+        # Pyright/Pylance 把 assert x is not None 当作类型收窄指令——在 assert 之后的代码里，x 被收窄为 Response
+        assert resp is not None
         data = resp.json()
+
         print(f"data:{data}")
+        usage = data.get("usage") or {}
         return ChatResponse(
             # 工具调用的话可能content为None所以改用.get来处理None
             content = data["choices"][0]["message"].get("content"),
             model = data["model"],
             finish_reason = data["choices"][0]["finish_reason"],
-            prompt_tokens = data["usage"]["prompt_tokens"],
-            completion_tokens = data["usage"]["completion_tokens"],
+            prompt_tokens = usage.get("prompt_tokens", 0),
+            completion_tokens = usage.get("completion_tokens", 0),
+            # 输入缓存命中 token（DeepSeek/OpenAI 缓存机制）
+            cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
             tool_calls = data["choices"][0]["message"].get("tool_calls")
         )
         
