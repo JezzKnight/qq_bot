@@ -5,7 +5,7 @@ from nonebot import get_driver, get_plugin_config
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.drivers import Driver
 
-from . import client_factory, memory_writing
+from . import client_factory, memory_writing, token_usage
 from .config import AiChatConfig
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,18 @@ async def _on_bot_connect(bot: Bot):
     try:
         await bot.send_group_msg(
             group_id=group_id,
-            message="✅ Boooost 已上线",
+            message="🐋 肥鲸 已上线",
         )
         _last_startup_notify[0] = time.time()
         logger.info("启动通知已发送 -> group:%d", group_id)
     except Exception:  # noqa: BLE001
         logger.warning("启动通知发送失败", exc_info=True)
+
+
+@_driver.on_startup
+async def startup() -> None:
+    """启动时初始化资源"""
+    await token_usage.init()
 
 
 @_driver.on_shutdown
@@ -51,3 +57,4 @@ async def cleanup() -> None:
         await client_factory._openai_client.close()
     if client_factory._gemini_client is not None:
         await client_factory._gemini_client.close()
+    await token_usage.close()

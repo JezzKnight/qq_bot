@@ -31,6 +31,9 @@ class AiChatConfig(BaseModel):
     startup_notify_group: int = 0              # 启动通知目标群号，0 表示不发送
     startup_notify_cooldown: int = 300         # 启动通知冷却期（秒），防止频繁重启刷屏
 
+    # ── Token 用量统计 ──
+    token_usage_retention_days: int = 90       # 用量记录保留天数，<=0 表示永久保留
+
     # ── Pixiv访问控制 ──
     proxy: str = ""
     refresh_token: list[str] = []

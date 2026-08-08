@@ -2,7 +2,12 @@
 
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
+
 from ..ai.types import ChatMessage
+
+# token 用量记录器签名：接收 (prompt_tokens, cached_tokens, completion_tokens)
+UsageRecorder = Callable[[int, int, int], Awaitable[None]]
 
 
 class BaseSubAgent(ABC):
@@ -12,12 +17,20 @@ class BaseSubAgent(ABC):
     max_rounds: int
 
 
-    def __init__(self, client, tools: list[dict], model: str, tool_registry: dict[str, dict]):
+    def __init__(
+        self,
+        client,
+        tools: list[dict],
+        model: str,
+        tool_registry: dict[str, dict],
+        usage_recorder: UsageRecorder | None = None,
+    ):
         super().__init__()
         self.model = model
         self.client = client
         self.tool_registry = tool_registry
         self.tools: list[dict] = tools # subagent可用工具列表
+        self.usage_recorder = usage_recorder
 
 
     @abstractmethod
@@ -41,6 +54,13 @@ class BaseSubAgent(ABC):
                     model=self.model,
                     tools=self.tools
                 )
+                # 记录本次调用的 token 消耗
+                if self.usage_recorder is not None:
+                    await self.usage_recorder(
+                        response.prompt_tokens,
+                        response.cached_tokens,
+                        response.completion_tokens,
+                    )
                 # 如果没有工具调用，则直接返回内容
                 if not response.tool_calls:
                     final_content = response.content or "AI暂时无法响应"

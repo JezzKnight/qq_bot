@@ -24,5 +24,6 @@ class ChatResponse:
     finish_reason: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cached_tokens: int = 0 # 输入缓存命中 token
     tool_calls: list[dict] | None = None
     raw_parts: list[dict] | None = None

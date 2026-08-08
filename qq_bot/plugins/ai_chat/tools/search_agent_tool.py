@@ -1,9 +1,12 @@
 
 from nonebot import get_plugin_config
-from ..config import AiChatConfig
-from ....agents.search_agent import SearchAgent
-from ..client_factory import get_client_for_model
-from .registry import register_tool, get_tools_schema, TOOLS
+
+from qq_bot.agents.search_agent import SearchAgent
+from qq_bot.plugins.ai_chat import token_usage
+from qq_bot.plugins.ai_chat.client_factory import get_client_for_model
+from qq_bot.plugins.ai_chat.config import AiChatConfig
+from qq_bot.plugins.ai_chat.tools.registry import TOOLS, get_tools_schema, register_tool
+
 
 @register_tool(
     name="search_agent",
@@ -30,6 +33,9 @@ async def search_agent(task: str, model: str | None = None):
     client = await get_client_for_model(config, model)
     # 构建sub agent的工具列表
     tools = get_tools_schema("web_search","web_fetch")
-    subagent = SearchAgent(client, tools, model, task, TOOLS)
+    subagent = SearchAgent(
+        client, tools, model, task, TOOLS,
+        usage_recorder=token_usage.record,
+    )
     search_res = await subagent.execute(fail_msg="检索任务失败")
     return search_res

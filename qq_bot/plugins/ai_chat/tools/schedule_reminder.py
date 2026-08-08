@@ -1,12 +1,13 @@
 from datetime import datetime
+
 from nonebot import get_plugin_config
 
-from qq_bot.plugins.ai_chat.tools.registry import register_tool
-from qq_bot.plugins.ai_chat.tools.context import current_scope
-from qq_bot.plugins.ai_chat.config import AiChatConfig
-from qq_bot.plugins.ai_chat.client_factory import get_client_for_model
-from qq_bot.plugins.ai_chat.tools.registry import get_tools_schema, TOOLS
 from qq_bot.agents.schedule_agent import ScheduleTaskAgent
+from qq_bot.plugins.ai_chat import token_usage
+from qq_bot.plugins.ai_chat.client_factory import get_client_for_model
+from qq_bot.plugins.ai_chat.config import AiChatConfig
+from qq_bot.plugins.ai_chat.tools.context import current_scope
+from qq_bot.plugins.ai_chat.tools.registry import TOOLS, get_tools_schema, register_tool
 
 
 async def _parse_user_intended_time(text:str) -> str | None:
@@ -42,6 +43,7 @@ async def build_scheduled_agent(prompt: str) -> ScheduleTaskAgent:
         model=config.ai_model,
         prompt=prompt,
         tool_registry=TOOLS,
+        usage_recorder=token_usage.record,
     )
 
 

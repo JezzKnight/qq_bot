@@ -5,6 +5,7 @@ from prompts.service import prompt_service
 from .config import AiChatConfig
 from ...ai.types import ChatMessage
 from . import lifecycle
+from . import token_usage
 from .utils import split_message, extract_images, scan_and_save_members, get_group_members
 from .memory_writing import get_memory
 from .client_factory import get_client_for_model
@@ -120,6 +121,10 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             max_tokens = config.ai_max_tokens,
             # 工具列表
             tools = get_tools_schema("search_agent","web_fetch", "save_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
+        )
+        # 记录本次调用的 token 消耗（失败请求内部自动跳过）
+        await token_usage.record(
+            response.prompt_tokens, response.cached_tokens, response.completion_tokens
         )
         # 如果没有工具调用就直接结束循环正常输出
         if not response.tool_calls:

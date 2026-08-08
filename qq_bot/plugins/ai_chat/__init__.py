@@ -14,6 +14,7 @@ from .commands import help
 from .commands import scan_members
 from .commands import list_reminders
 from .commands import reboot
+from .commands import usage
 
 async def keyword_rule(event: Event) -> bool:
     """

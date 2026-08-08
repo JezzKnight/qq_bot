@@ -2,7 +2,7 @@ from datetime import datetime
 
 from prompts.service import prompt_service
 
-from .base import BaseSubAgent
+from .base import BaseSubAgent, UsageRecorder
 
 
 class ScheduleTaskAgent(BaseSubAgent):
@@ -10,11 +10,19 @@ class ScheduleTaskAgent(BaseSubAgent):
     system_prompt: str  # 由 PromptService 在 __init__ 中加载
     max_rounds: int = 3
 
-    def __init__(self, client, tools: list[dict], model: str, prompt: str, tool_registry: dict[str, dict]) -> None:
+    def __init__(  # noqa: PLR0913
+        self,
+        client,
+        tools: list[dict],
+        model: str,
+        prompt: str,
+        tool_registry: dict[str, dict],
+        usage_recorder: UsageRecorder | None = None,
+    ) -> None:
         now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = prompt_service.get_agent_prompt("schedule", current_time=now, user_task=prompt)
 
-        super().__init__(client, tools, model, tool_registry)
+        super().__init__(client, tools, model, tool_registry, usage_recorder)
 
 
     def _build_task_prompt(self, **kwargs) -> str:
