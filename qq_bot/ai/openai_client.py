@@ -10,7 +10,10 @@ class Openaiclient:
         self.api_key = api_key
         self.default_model = "deepseek-chat"
         # 在init中创建对象复用连接池
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
+        # trust_env=False：不读取系统环境代理（如 ZodAccess 等本地代理软件注入的 HTTP_PROXY）。
+        # 若不关掉，发往本机 llama.cpp（127.0.0.1）的请求会被代理劫持，导致连接被重置 / 返回空响应。
+        # 本客户端服务 DeepSeek 与本地模型，均需直连；Gemini 客户端保留代理（Google 在国内需代理才能访问）。
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0), trust_env=False)
 
     # **kwargs就是一个普通字典，操作方法与字典一致
     async def chat(self, messages: list[ChatMessage], model: str | None = None, tools = None, **kwargs) -> ChatResponse:
@@ -122,6 +125,14 @@ class Openaiclient:
         data = resp.json()
 
         print(f"data:{data}")
+        # 服务商返回错误结构（{error: {...}}，如模型不支持图片输入/额度超限）而非正常 choices 时，
+        # 优雅降级为可读消息返回给上层，避免 data["choices"] 抛 KeyError 导致整个会话崩溃
+        if "choices" not in data or not data.get("choices"):
+            error_info = data.get("error") or {}
+            err_msg = error_info.get("message") or f"HTTP {resp.status_code}: {str(data)[:200]}"
+            print(f"[ERROR] 模型服务返回错误: {err_msg}")
+            return ChatResponse(content=f"模型返回错误：{err_msg}")
+
         usage = data.get("usage") or {}
         return ChatResponse(
             # 工具调用的话可能content为None所以改用.get来处理None
