@@ -120,7 +120,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent","web_fetch", "save_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
+            tools = get_tools_schema("search_agent", "save_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
         )
         # 记录本次调用的 token 消耗（失败请求内部自动跳过）
         await token_usage.record(
