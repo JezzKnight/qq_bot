@@ -34,7 +34,7 @@ async def web_search(query: str,
                     exclude_domains: list[str] | None = None):
     payload = {
         # 决定搜索开销
-        "max_results": 20, # 最多搜索结果
+        "max_results": 8, # 最多搜索结果
         "search_depth": "advanced", # 搜索模式
         "include_favicon": False, # 包含每个搜索结果的图标
         "include_answer": False, # 输出带有Tavily LLM自带的问题总结
