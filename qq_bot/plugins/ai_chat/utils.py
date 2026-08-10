@@ -24,28 +24,38 @@ async def scan_and_save_members(bot: Bot, event: GroupMessageEvent):
     return True
 
 
-def get_group_members(group_id):
-    """从本地文件获取群成员信息"""
+def load_group_members_list(group_id: int | str) -> list[dict] | None:
+    """读取 members.json 原始 JSON 数组；文件缺失/损坏返回 None"""
     member_file = get_plugin_data_dir() / "long_term_memory" / "groups" / str(group_id) / "members.json"
-    if member_file.exists():
-        data = json.loads(member_file.read_text(encoding='utf-8'))
-        # 构造XML
-        root = ET.Element("group_participants")
-
-        for m in data:
-            user = ET.SubElement(root, "user")
-            user.set("id", str(m["user_id"]))
-
-            # 优先使用群名片（card），若无则用昵称，最后用 user_id 兜底
-            name = m.get("card") or m.get("nickname") or str(m["user_id"])
-            user.set("name", name)
-
-        # 返回格式化后的 XML 字符串（带缩进更美观）
-        # 注意：ElementTree 默认输出没有缩进，下面的方式可添加缩进（Python 3.9+）
-        ET.indent(root, space="  ")
-        return ET.tostring(root, encoding="unicode", method="xml")
-    else:
+    if not member_file.exists():
         return None
+    try:
+        return json.loads(member_file.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"[WARN] 读取成员列表失败: {e}")
+        return None
+
+
+def get_group_members(group_id: int | str) -> str | None:
+    """从本地文件获取群成员信息"""
+    data = load_group_members_list(group_id)
+    if not data:
+        return None
+    # 构造XML
+    root = ET.Element("group_participants")
+
+    for m in data:
+        user = ET.SubElement(root, "user")
+        user.set("id", str(m["user_id"]))
+
+        # 优先使用群名片（card），若无则用昵称，最后用 user_id 兜底
+        name = m.get("card") or m.get("nickname") or str(m["user_id"])
+        user.set("name", name)
+
+    # 返回格式化后的 XML 字符串（带缩进更美观）
+    # 注意：ElementTree 默认输出没有缩进，下面的方式可添加缩进（Python 3.9+）
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", method="xml")
 
 
 def split_message(text: str) -> list[str]:

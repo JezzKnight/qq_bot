@@ -15,6 +15,10 @@ class AiChatConfig(BaseModel):
     max_history: int = 20                          # 最大历史消息条数
     max_context_tokens: int = 8192                 # 上下文总 token 上限
 
+    # ── 动态记忆注入 ──
+    memory_injection_enabled: bool = True      # 群聊动态注入总开关（False → 不注入长期记忆）
+    glossary_enabled: bool = True              # 术语库注入开关（匹配命中时是否注入词义）
+
     # ── 触发设置 ──
     enable_at_trigger: bool = True                   # @ 触发开关
     enable_keyword_trigger: bool = False             # 关键词触发开关

@@ -9,7 +9,7 @@ from . import token_usage
 from .utils import split_message, extract_images, scan_and_save_members, get_group_members
 from .memory_writing import get_memory
 from .client_factory import get_client_for_model
-from .long_term_memory import load_memory_for_context
+from .dynamic_injection import build_memory_injection, build_private_injection
 from .session_store import _load_session_models, get_session_model
 from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name, current_search_tracker, SearchTracker
 
@@ -75,7 +75,6 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     memory = await get_memory(config)
     history = await memory.get_history(session_id)
     # 构建prompt
-    memory_prompt = await load_memory_for_context()
     time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
     system_part = prompt_service.get_system_prompt(current_time=time_now)
     # 多用户提示词注入
@@ -94,11 +93,34 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             user_name=sender_name,
             member_info=member_info,
         )
+        # 动态记忆注入（仅群聊）：必注入本人+群公共记忆，按需注入提及成员与术语
+        memory_prompt = None
+        if config.memory_injection_enabled:
+            try:
+                memory_prompt, injected_uids = build_memory_injection(
+                    event.group_id,
+                    event.user_id,
+                    content,
+                    self_id=bot.self_id,
+                    glossary_enabled=config.glossary_enabled,
+                )
+                print(f"[INFO] 动态记忆注入完成，命中成员: {injected_uids}")
+            except Exception as e:
+                print(f"[WARN] 动态记忆注入失败，降级为不注入: {type(e).__name__}: {e}")
+                memory_prompt = None
     else:
         group_part = f"你当前正在与 {sender_name} 私聊。"
-    # 多人用户个人长期记忆信息注入
+        # 私聊：注入本人记忆
+        memory_prompt = None
+        if config.memory_injection_enabled:
+            try:
+                memory_prompt = build_private_injection(event.user_id)
+            except Exception as e:
+                print(f"[WARN] 私聊记忆注入失败，降级为不注入: {type(e).__name__}: {e}")
+                memory_prompt = None
+    # 动态记忆注入结果
     if memory_prompt:
-        memory_part = f"以下是群聊中可见的长期记忆索引：{memory_prompt}"
+        memory_part = f"以下是本轮对话动态注入的长期记忆：\n{memory_prompt}"
     else:
         memory_part = ""
     # 拼接最终的prompt
@@ -120,7 +142,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent", "save_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
+            tools = get_tools_schema("search_agent", "save_memory", "save_glossary", "cancel_reminder", "schedule_reminder", "query_chat_history")
         )
         # 记录本次调用的 token 消耗（失败请求内部自动跳过）
         await token_usage.record(
@@ -148,7 +170,11 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                     search_agent_called = True
                     args = {"model": model_name, "task": args.get("task", content)}
 
-                    tracker: SearchTracker = {"tavily_success": False, "tavily_error_count": 0}
+                    tracker: SearchTracker = {
+                        "tavily_success": False,
+                        "tavily_error_count": 0,
+                        "search_rounds": 0,
+                    }
                     current_search_tracker.set(tracker)
                     try:
                         await matcher.send(MessageSegment.text("正在找寻相关信息"))
@@ -160,6 +186,11 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                     if tracker["tavily_error_count"] > 0 and not tracker["tavily_success"]:
                         await matcher.send(
                             MessageSegment.text(f"⚠️ Tavily服务异常，检索过程失败{tracker['tavily_error_count']}次")
+                        )
+                    # 子 Agent 全部轮次结束：告知用户本次共检索了多少轮
+                    if tracker["search_rounds"] > 0:
+                        await matcher.send(
+                            MessageSegment.text(f"已完成所有信息的检索，本次共执行了 {tracker['search_rounds']} 轮检索")
                         )
             else:
                 result = await tool["func"](**args)
