@@ -1,6 +1,7 @@
 import re
 import uuid
 
+from .context import current_search_tracker
 from .registry import register_tool
 from .tavily_client import TavilyClient
 
@@ -56,6 +57,11 @@ def _filter_image_info(content: str) -> str:
     },
 )
 async def web_fetch(urls: list[str]) -> str:
+    tracker = current_search_tracker.get()
+    # 每调用一次 web_fetch 也计入检索轮数
+    if tracker is not None:
+        tracker["search_rounds"] += 1
+
     payload = {
         # 决定搜索开销
         "urls": urls,  # 最多搜索结果zheg

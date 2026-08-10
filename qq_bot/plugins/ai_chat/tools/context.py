@@ -9,6 +9,7 @@ class SearchTracker(TypedDict):
     """子 Agent 搜索过程中累积的 Tavily 调用状态"""
     tavily_success: bool       # 至少一次返回了有效结果
     tavily_error_count: int    # 返回空/失败的次数
+    search_rounds: int         # 累计检索轮数（每调用一次 web_search 加一）
 
 
 current_scope: contextvars.ContextVar[str] = contextvars.ContextVar("current_scope")

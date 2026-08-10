@@ -29,9 +29,14 @@ _client = TavilyClient()
                 "required": ["query"]
                 }
 )
-async def web_search(query: str, 
-                    topic: Literal["general", "news", "finance"] = "general", 
+async def web_search(query: str,
+                    topic: Literal["general", "news", "finance"] = "general",
                     exclude_domains: list[str] | None = None):
+    tracker = current_search_tracker.get()
+    # 每调用一次 web_search 即视为一轮检索，用于向用户汇报检索轮数
+    if tracker is not None:
+        tracker["search_rounds"] += 1
+
     payload = {
         # 决定搜索开销
         "max_results": 8, # 最多搜索结果
@@ -48,7 +53,6 @@ async def web_search(query: str,
         payload["exclude_domains"] = exclude_domains
 
     results = await web_search_by_tavily(payload)
-    tracker = current_search_tracker.get()
     if not results:
         # API 调用失败（超时等），更新错误计数
         if tracker is not None:
