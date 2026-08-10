@@ -8,7 +8,7 @@ from .base import BaseSubAgent, UsageRecorder
 class SearchAgent(BaseSubAgent):
     agent_name: str = "search_agent"
     system_prompt: str  # 由 PromptService 在 __init__ 中加载
-    max_rounds: int = 20
+    max_rounds: int = 5
 
     def __init__(  # noqa: PLR0913
         self,
