@@ -1,7 +1,9 @@
 from .registry import TOOLS, register_tool, get_tools_schema
 from .get_current_time import get_current_time
 from .web_search import web_search_by_tavily
+from .batch_search import batch_search
 from .web_fetch import web_fetch_by_tavily
+from .save_digest import save_digest
 from .search_agent_tool import search_agent
 from .save_memory import save_memory
 from .save_glossary import save_glossary

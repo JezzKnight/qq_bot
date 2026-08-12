@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from typing import cast
 from prompts.service import prompt_service
@@ -153,7 +154,12 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             final_content = response.content or "AI暂时无法响应"
             break
 
-        assistant_msg = ChatMessage(role="assistant", tool_calls=response.tool_calls, raw_parts=response.raw_parts)
+        assistant_msg = ChatMessage(
+            role="assistant",
+            tool_calls=response.tool_calls,
+            raw_parts=response.raw_parts,
+            reasoning_content=response.reasoning_content,
+        )
         messages.append(assistant_msg)
 
         print(f"[INFO] 工具调用：{response.tool_calls}")
@@ -178,7 +184,10 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                     current_search_tracker.set(tracker)
                     try:
                         await matcher.send(MessageSegment.text("正在找寻相关信息"))
+                        # 计时：从调用 search agent 到其输出检索报告
+                        search_start = time.monotonic()
                         result = await tool["func"](**args)
+                        search_time = time.monotonic() - search_start
                     finally:
                         current_search_tracker.set(None)
 
@@ -187,10 +196,12 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                         await matcher.send(
                             MessageSegment.text(f"⚠️ Tavily服务异常，检索过程失败{tracker['tavily_error_count']}次")
                         )
-                    # 子 Agent 全部轮次结束：告知用户本次共检索了多少轮
+                    # 子 Agent 全部轮次结束：告知用户本次共检索了多少轮及耗时
                     if tracker["search_rounds"] > 0:
                         await matcher.send(
-                            MessageSegment.text(f"已完成所有信息的检索，本次共执行了 {tracker['search_rounds']} 轮检索")
+                            MessageSegment.text(
+                                f"已完成所有信息的检索，本次共执行了 {tracker['search_rounds']} 轮检索，耗时 {search_time:.1f} 秒"
+                            )
                         )
             else:
                 result = await tool["func"](**args)

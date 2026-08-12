@@ -10,6 +10,29 @@ from ..ai.types import ChatMessage
 UsageRecorder = Callable[[int, int, int], Awaitable[None]]
 
 
+def _replace_search_batch(
+    messages: list[ChatMessage],
+    batch_search_ids: set[str],
+) -> list[ChatMessage]:
+    """移除 batch_search 产生的原始搜索批次，释放后续轮次上下文空间。
+
+    摘要已由 save_digest 拦截写入为对应 tool 结果（role="tool"），保留在
+    messages 中维持合法工具调用链，不触发 DeepSeek 思考模式的校验。
+    """
+    drop_indices: set[int] = set()
+    for i, m in enumerate(messages):
+        if m.role == "assistant" and m.tool_calls:
+            m.tool_calls = [
+                tc for tc in m.tool_calls if tc["id"] not in batch_search_ids
+            ]
+            if not m.tool_calls:
+                drop_indices.add(i)
+        elif m.role == "tool" and m.tool_call_id in batch_search_ids:
+            drop_indices.add(i)
+
+    return [m for i, m in enumerate(messages) if i not in drop_indices]
+
+
 class BaseSubAgent(ABC):
     """子Agent基类，本质是一个独立的LLM对话"""
     agent_name: str
@@ -47,6 +70,8 @@ class BaseSubAgent(ABC):
         # 做一个空内容的兜底
         if content:
             messages.append(ChatMessage(role= "user", content=content))
+        # 记录 batch_search 调用的 tool_call_id，供 save_digest 替换时定位原始搜索批次
+        batch_search_ids: set[str] = set()
         try:
             for _ in range(self.max_rounds):
                 response = await self.client.chat(
@@ -65,17 +90,34 @@ class BaseSubAgent(ABC):
                 if not response.tool_calls:
                     final_content = response.content or "AI暂时无法响应"
                     break
-                
-                assistant_msg = ChatMessage(role="assistant", tool_calls = response.tool_calls, raw_parts=response.raw_parts)
+
+                assistant_msg = ChatMessage(
+                    role="assistant",
+                    tool_calls=response.tool_calls,
+                    raw_parts=response.raw_parts,
+                    reasoning_content=response.reasoning_content,
+                )
                 messages.append(assistant_msg)
 
-                # print(f"[INFO] 工具调用：{response.tool_calls}")
+                print(f"Sub agent [INFO] 工具调用：{response.tool_calls}")
+                digest = False  # save_digest 是否被调用（用于触发批次回收）
                 for tc in response.tool_calls:
                     func = tc["function"]
+                    name = func["name"]
+                    args = json.loads(func["arguments"])
+                    if name == "save_digest":
+                        # 摘要作为 save_digest 工具结果写入，保持消息链合法
+                        content = args.get("content") or ""
+                        messages.append(ChatMessage(
+                            role="tool",
+                            content="【检索进展摘要】\n" + content,
+                            tool_call_id=tc["id"],
+                        ))
+                        digest = True
+                        continue
                     # 工具改为由构造器注入
                     # tool = TOOLS[func["name"]]
-                    tool = self.tool_registry[func["name"]]
-                    args = json.loads(func["arguments"])
+                    tool = self.tool_registry[name]
                     result = await tool["func"](**args)
 
                     messages.append(ChatMessage(
@@ -83,6 +125,13 @@ class BaseSubAgent(ABC):
                         content = result,
                         tool_call_id = tc["id"],
                     ))
+                    if name == "batch_search":
+                        batch_search_ids.add(tc["id"])
+
+                # 条件性阶段隔离：模型提交摘要后，用摘要替换原始 batch_search 批次
+                if digest:
+                    messages = _replace_search_batch(messages, batch_search_ids)
+                    batch_search_ids.clear()
             else:
                 final_content = fail_msg
                 return final_content

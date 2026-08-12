@@ -66,8 +66,8 @@ class TavilyClient:
                         headers={**_HEADERS, "Authorization": f"Bearer {key}"},
                         json=payload,
                     )
-                    print(f"[DEBUG] Tavily search 状态码: {response.status_code}")
-                    print(f"[DEBUG] Tavily search 响应体: {response.text[:500]}")
+                    print(f"[DEBUG] Tavily {endpoint} 状态码: {response.status_code}")
+                    print(f"[DEBUG] Tavily {endpoint} 响应体: {response.text[:500]}")
                 except httpx.ConnectTimeout:
                     # 网络问题，与 key 无关，直接失败
                     # logger.warning("网络异常，Tavily %s 连接超时", endpoint)

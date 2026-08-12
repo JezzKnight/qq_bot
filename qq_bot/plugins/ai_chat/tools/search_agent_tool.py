@@ -32,7 +32,7 @@ async def search_agent(task: str, model: str | None = None):
         model = config.ai_model
     client = await get_client_for_model(config, model)
     # 构建sub agent的工具列表
-    tools = get_tools_schema("web_search","web_fetch")
+    tools = get_tools_schema("batch_search","web_fetch","save_digest")
     subagent = SearchAgent(
         client, tools, model, task, TOOLS,
         usage_recorder=token_usage.record,

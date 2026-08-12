@@ -54,6 +54,9 @@ class Openaiclient:
                 msg["tool_call_id"] = m.tool_call_id
             if m.sender_name is not None:
                 msg["name"] = m.sender_name
+            # DeepSeek 思考模式：assistant 需原样回传 reasoning_content
+            if m.role == "assistant" and m.reasoning_content is not None:
+                msg["reasoning_content"] = m.reasoning_content
             payload_messages.append(msg)
         payload["messages"] = payload_messages
         # 模型参数传入
@@ -134,16 +137,19 @@ class Openaiclient:
             return ChatResponse(content=f"模型返回错误：{err_msg}")
 
         usage = data.get("usage") or {}
+        message = data["choices"][0]["message"]
         return ChatResponse(
             # 工具调用的话可能content为None所以改用.get来处理None
-            content = data["choices"][0]["message"].get("content"),
+            content = message.get("content"),
             model = data["model"],
             finish_reason = data["choices"][0]["finish_reason"],
             prompt_tokens = usage.get("prompt_tokens", 0),
             completion_tokens = usage.get("completion_tokens", 0),
             # 输入缓存命中 token（DeepSeek/OpenAI 缓存机制）
             cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
-            tool_calls = data["choices"][0]["message"].get("tool_calls")
+            tool_calls = message.get("tool_calls"),
+            # 思考模式推理内容，供多轮/工具调用时回传
+            reasoning_content = message.get("reasoning_content"),
         )
         
 

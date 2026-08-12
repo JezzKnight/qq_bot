@@ -2,8 +2,9 @@ import logging
 import time
 
 from nonebot import get_driver, get_plugin_config
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.drivers import Driver
+from nonebot_plugin_localstore import get_plugin_data_dir
 
 from . import client_factory, memory_writing, token_usage
 from .config import AiChatConfig
@@ -32,9 +33,16 @@ async def _on_bot_connect(bot: Bot):
         return
 
     try:
+        # 先发文字
         await bot.send_group_msg(
             group_id=group_id,
-            message="🐋 肥鲸 已上线",
+            message="🐋 肥鲸 参上！",
+        )
+        # 再发图片
+        image_path = get_plugin_data_dir() / "stickers" / "online.jpg"
+        await bot.send_group_msg(
+            group_id=group_id,
+            message=Message(MessageSegment.image(file=image_path.read_bytes())),
         )
         _last_startup_notify[0] = time.time()
         logger.info("启动通知已发送 -> group:%d", group_id)
