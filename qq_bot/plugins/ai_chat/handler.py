@@ -129,8 +129,9 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     messages= [ChatMessage(role="system", content=f"{final_prompt}")]
     # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
-    images = await extract_images(event)
     # 将图片信息传入messages中，让geminiclient中来处理
+    images = await extract_images(event)
+    print(f"[DEBUG] {images}")
     identity_tag = f'<user identity id="{event.user_id}" name="{sender_name}"/>'
     messages.append(ChatMessage(role=f"user", content=f"{identity_tag}\n{content}", sender_name=sender_name, images=images or None))
     messages = memory.trim_if_needed(messages, config.max_context_tokens)
@@ -143,7 +144,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent", "save_memory", "save_glossary", "cancel_reminder", "schedule_reminder", "query_chat_history")
+            tools = get_tools_schema("search_agent", "save_memory", "save_glossary", "recall_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
         )
         # 记录本次调用的 token 消耗（失败请求内部自动跳过）
         await token_usage.record(
@@ -218,8 +219,15 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         final_content = "AI暂时无法响应，请稍后重试"
 
     # 添加至记忆中
+    # 历史消息带上发言人身份标记：读回上下文时模型才能区分各成员发言；
+    # assistant 同样标记，让 AI 明确知道哪些内容属于它自己的回复。
     sender_name = event.sender.card or event.sender.nickname or ""
-    await memory.append(session_id, sender_name, content, final_content)
+    await memory.append(
+        session_id,
+        sender_name,
+        f"{identity_tag}\n{content}",
+        f'<assistant identity id="{bot.self_id}"/>\n{final_content}',
+    )
 
     if is_group:
         chunks = split_message(final_content)

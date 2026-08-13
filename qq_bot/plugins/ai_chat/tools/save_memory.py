@@ -1,24 +1,39 @@
-import re
-from .registry import register_tool
+# ruff: noqa: E501   # 工具描述含大量中文示例，行宽超过 88 属有意为之
+"""长期记忆保存工具：AI 将当前用户/群的稳定信息写入 per-scope JSON 单文件。
+
+存储位置见 ../memory_store.py（long_term_memory/{scope}.json）。
+"""
+from qq_bot.plugins.ai_chat.memory_store import MemoryStore
+
 from .context import current_scope
-from nonebot_plugin_localstore import get_plugin_data_dir
-from pathlib import Path
-from datetime import datetime
+from .registry import register_tool
+
 
 @register_tool(
     name="save_memory",
-    description="将关于当前用户的重要信息保存为长期记忆。\n\n"
-                "## 何时调用\n"
-                "1. 用户告知了新的个人事实或偏好\n"
-                "2. 用户的偏好发生了变化（如之前喜欢简短回复，现在说可以详细一点）\n"
-                "3. 对话中产生了值得跨会话保留的知识\n\n"
-                "## 更新已有记忆\n"
-                "在保存前，先检查对话中已有的用户记忆索引（INDEX）。"
-                "如果要保存的内容是对已有记忆的修正或补充，使用相同的 key 值，"
-                "系统会自动覆盖更新。不要为同一事实创建不同 key。\n\n"
-                "## 删除记忆\n"
-                "如果用户明确表示某条记忆不再适用，key 填已有记忆的 key，"
-                "content 填空字符串即可删除。",
+    description=(
+        "将值得长期保留的信息保存为长期记忆（个人记忆或群公共记忆）。\n\n"
+        "## 何时调用\n"
+        "1. 用户告知了新的个人事实、偏好或长期特征\n"
+        "2. 用户的偏好发生了变化，需要更新已有记忆\n"
+        "3. 对话中出现了值得跨会话保留的稳定信息（人物长期特征、群内梗文化、群约定等）\n\n"
+        "## scope 选择（群聊时必判，先定范围再保存）\n"
+        "- 影响 bot 在群内对所有成员的行为/回复风格（如回复格式约定、群规、群内通用梗文化）→ scope='group'\n"
+        "- 只关于当前发言者本人的身份/喜好/特征 → scope='personal'（默认）\n"
+        "- 判断测试：这条信息成立后，bot 是否应对群里其他成员也照样执行？应该→group；仅对该成员本人→personal\n\n"
+        "## 内容写作硬性要求（最重要）\n"
+        "只保存【稳定、长期不变】的底层信息：\n"
+        "- 禁止保存易变信息：QQ号/用户ID、机器人的名字、用户的群名片昵称、当前日期时间、临时状态、一次性事件\n"
+        "- 用第三人称客观陈述，脱离本段对话上下文也能独立读懂\n"
+        "- 禁止使用『他/她』等无明确指代的代词，禁止『用户说…』『之前…被推翻』这类对话过程描述\n"
+        "- 涉及称呼时保存「用户希望被称呼为X」的偏好本身，而不是当前名片值\n\n"
+        "## 更新与删除\n"
+        "同一事实只用一个 key：修正/补充已有记忆时传相同 key 覆盖；"
+        "用户明确表示某条记忆不再适用时，key 传原 key、content 填空字符串删除。\n\n"
+        "## 示例\n"
+        "✗ 用户ID 12345678   ✗ 群名片叫『问问AI本人』   ✗ 刚才他说了句好可爱\n"
+        "✓ 喜欢假小子（长期偏好）   ✓ 有巨物恐惧症（稳定事实）   ✓ 要求被称呼为 god（身份偏好）"
+    ),
     parameters={
         "type": "object",
         "properties": {
@@ -33,135 +48,24 @@ from datetime import datetime
             },
             "content": {
                 "type": "string",
-                "description": "记忆正文。如要删除此记忆，填空字符串。"
-            },
-            "summary": {
-                "type": "string",
-                "description": "一行摘要，用于索引文件"
+                "description": "记忆正文（第三人称、稳定客观）。如要删除此记忆，填空字符串。"
             },
             "scope": {
-                  "type": "string",
-                  "enum": ["personal", "group"],
-                  "description": "记忆归属。personal=当前用户个人记忆（默认），group=群公共记忆（仅群聊可用）。"
+                "type": "string",
+                "enum": ["personal", "group"],
+                "description": "记忆归属（默认 personal）。"
+                                "personal=只关于当前发言者本人的事实/偏好，绑定该成员；"
+                                "group=影响 bot 在群内对所有成员行为的约定（回复格式、群规、群通用梗），绑定整个群。"
+                                "测试：该信息成立后 bot 是否应对群里其他成员也照样执行？是→group；仅对该成员→personal。"
             }
         },
-        "required": ["key", "mem_type", "content", "summary"]},
+        "required": ["key", "mem_type", "content"]},
 )
-async def save_memory(key: str, mem_type: str, content: str, summary: str, scope: str = "personal"):
+async def save_memory(key: str, mem_type: str, content: str, scope: str = "personal") -> str:
     """储存长期记忆"""
     raw_scope = current_scope.get()
-    root = get_plugin_data_dir() / "long_term_memory"
     if scope == "group" and raw_scope.startswith("groups/"):
-        _, group_id, _ = raw_scope.split("/")
-        scope_path = root / "groups" / group_id / "_group"
+        file_scope = f"groups/{raw_scope.split('/')[1]}/_group"
     else:
-        scope_path = root / raw_scope
-
-    mem_file = scope_path / f"{key}.md"
-    # 删除功能
-    if not content.strip():
-        if mem_file.exists():
-            mem_file.unlink()
-    else:
-        now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-
-        created = now
-        # 相同key覆盖
-        if mem_file.exists():
-            existing = parse_frontmatter(mem_file.read_text("utf-8"))
-            created = existing.get("created", now)
-        # 将字符串内容从f-string中剥离出来
-        frontmatter = "\n".join([
-            "---",
-            f"name: {key}",
-            f"description: {summary}",
-            f"type: {mem_type}",
-            f"created: {created}",
-            f"updated: {now}",
-            "---",
-            "",
-            content,
-        ])
-        scope_path.mkdir(parents=True, exist_ok=True)
-        mem_file.write_text(frontmatter, encoding="UTF-8")
-
-    rebuild_index(scope_path)
-    return f"已保存记忆：{key}"
-
-
-def parse_frontmatter(raw: str) -> dict:
-      """通过正则匹配 解析 markdown 文件开头的 YAML frontmatter，解析.md文件中元数据中的内容然后返回dict"""
-      match = re.match(r'^---\s*\n(.*?)\n---\s*\n', raw, re.DOTALL)
-      if not match:
-          return {}
-      meta = {}
-      for line in match.group(1).split("\n"):
-          if ":" in line:
-              k, v = line.split(":", 1)
-              meta[k.strip()] = v.strip()
-      return meta
-
-
-def rebuild_index(scope_path: Path):
-    """通过长期记忆文件夹中的文件来全量重构INDEX.md"""
-    """
-    INDEX.md 格式
-
-    # Memory Index —user_123456
-    最后更新: 2026-06-24T15:30:00
-
-    ## Preferences
-    - [用户偏好简短回复](prefers-short-reply.md) —不喜欢长篇，希望简洁
-
-    ## Facts
-    - [用户基本信息](basic-info.md) —名叫张三，在北京工作
-
-    ## Knowledge
-    - [AI Agent 开发](knowledge-ai-agent.md) —正在用 LangGraph 构建项目
-    """
-    scope_path.mkdir(parents=True,exist_ok=True)
-    groups: dict[str, list[dict]] = {"fact": [], "preference": [], "knowledge": [], "note": []}
-    # glob 方法，在 index_path 这个目录下匹配所有以 .md 结尾的文件。
-    for md_file in sorted(scope_path.glob("*.md")):
-        if md_file.name == "INDEX.md":
-            continue
-
-        raw = md_file.read_text(encoding="UTF-8")
-        meta = parse_frontmatter(raw)
-        if not meta:
-            continue
-        # 去 groups 这个字典里找刚才确定的类型。如果这个类型不存在，就先在字典里创建一个空列表 [] 作为它的值；如果存在，直接拿来用。
-        groups.setdefault(meta.get("type", "note"), []).append({
-              "name": meta.get("name", md_file.stem),
-              "description": meta.get("description", ""),
-        })
-    # 组装 INDEX.md
-    lines = [
-        f"# Memory Index —{scope_path.parent.name}/{scope_path.name}",
-        f"最后更新: {datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",
-        ""
-    ]
-
-    type_labels = {
-        "fact": "## 事实 (Facts)",
-        "preference": "## 偏好 (Preferences)",
-        "knowledge": "## 知识 (Knowledge)",
-        "note": "## 笔记 (Notes)",
-    }
-    # 通过记忆分类构建index
-    for mem_type, label in type_labels.items():
-        # 通过mem_type先去groups获取对应类型中储存的记忆列表
-        items = groups.get(mem_type, [])
-        if not items:
-            continue
-        lines.append(label)
-        for item in items:
-            lines.append(f"- [{item['name']}]({item['name']}.md) —{item['description']}")
-        lines.append("")
-    
-    index_path = scope_path / "INDEX.md"
-    index_path.write_text("\n".join(lines), encoding="UTF-8")
-    
-
-
-        
+        file_scope = raw_scope
+    return MemoryStore(file_scope).upsert(key, mem_type, content)
