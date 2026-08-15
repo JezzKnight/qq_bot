@@ -39,14 +39,14 @@ def _normalize_title(title: str) -> str:
 
 @register_tool(
     name="batch_search",
-    description="同时执行多个方向的网络搜索，返回合并去重后的全部结果。"
-                "当需要从多个角度/关键词查询信息时使用，一次调用完成，避免逐条搜索。",
+    description="同时执行多个方向的网络搜索（最多 3 个方向，方向数越少检索越快），"
+                "返回合并去重后的全部结果。当需要从多个角度/关键词查询信息时使用，一次调用完成，避免逐条搜索。",
     parameters={"type": "object",
                 "properties": {
                 "queries":{
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "多个独立搜索方向的关键词列表，"
+                    "description": "独立搜索方向的关键词列表，最多 3 个，"
                                     "每个元素是一个搜索 query。"
                     },
                 "topic":{
