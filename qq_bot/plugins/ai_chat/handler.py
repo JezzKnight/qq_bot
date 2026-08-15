@@ -82,7 +82,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     if isinstance(event, GroupMessageEvent):
         member_info = get_group_members(event.group_id)
         if not member_info:
-            success = await scan_and_save_members(bot, event)
+            success = await scan_and_save_members(bot, event, config.bot_self_id)
             if success:
                 member_info = get_group_members(event.group_id)
         # API 也失败时给兜底
@@ -220,13 +220,13 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
 
     # 添加至记忆中
     # 历史消息带上发言人身份标记：读回上下文时模型才能区分各成员发言；
-    # assistant 同样标记，让 AI 明确知道哪些内容属于它自己的回复。
+    # bot 回复由 role=assistant 标记，无需额外身份标签，避免无谓 token 开销。
     sender_name = event.sender.card or event.sender.nickname or ""
     await memory.append(
         session_id,
         sender_name,
         f"{identity_tag}\n{content}",
-        f'<assistant identity id="{bot.self_id}"/>\n{final_content}',
+        final_content,
     )
 
     if is_group:

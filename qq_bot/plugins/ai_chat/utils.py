@@ -7,13 +7,20 @@ from nonebot_plugin_localstore import get_plugin_data_dir
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 
-async def scan_and_save_members(bot: Bot, event: GroupMessageEvent):
-    """获取并保存群成员信息，成功返回 True，失败返回 False"""
+async def scan_and_save_members(bot: Bot, event: GroupMessageEvent, bot_self_id: str = ""):
+    """获取并保存群成员信息（排除 bot 自身账号），成功返回 True，失败返回 False"""
     try:
         members = await bot.get_group_member_list(group_id=event.group_id)
     except Exception as e:
         print(f"[ERROR] 获取群成员列表失败: {e}")
         return False
+
+    # 过滤掉 bot 自身：env 配置的 BOT_SELF_ID 优先，未配置时回退 bot.self_id
+    exclude_id = bot_self_id.strip() or str(bot.self_id)
+    if exclude_id:
+        members = [
+            m for m in members if str(m.get("user_id", "")) != exclude_id
+        ]
 
     group_dir = get_plugin_data_dir() / "long_term_memory" / "groups" / str(event.group_id)
     if not group_dir.exists():

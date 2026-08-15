@@ -10,6 +10,18 @@ class AiChatConfig(BaseModel):
     ai_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="AI的temperature参数在[0,2]之间")
     ai_max_tokens: int = 16384
 
+    # ── Bot 身份 ──
+    # bot 自身 QQ 号：扫描群成员时排除自己；未配置时回退到 bot.self_id
+    bot_self_id: str = ""
+
+    @field_validator("bot_self_id", mode="before")
+    @classmethod
+    def parse_bot_self_id(cls, v: object) -> str:
+        """QQ 号为纯数字，.env 中不加引号会被 NoneBot 解析成 int，统一转回 str"""
+        if v is None:
+            return ""
+        return str(v)
+
     # ── 记忆设置 ──
     memory_backend: str = "sqlite"
     max_history: int = 20                          # 最大历史消息条数
