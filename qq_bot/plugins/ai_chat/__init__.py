@@ -1,5 +1,5 @@
 from nonebot import on_message
-from nonebot.rule import Rule, to_me
+from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
@@ -28,9 +28,25 @@ async def keyword_rule(event: Event) -> bool:
     # 循环配置里写的关键词然后当关键词在text中被提及的时候any返回True
     return any(kw.lower() in text for kw in config.trigger_keywords)
 
+async def at_me_rule(event: Event) -> bool:
+    """任意位置 @机器人 即触发。
+
+    适配器自带 to_me() 只检查消息首/尾段，@ 出现在中间（或尾部带非空白
+    内容）时会漏触发导致静默不响应。此规则先沿用适配器原判定（私聊恒触发、
+    首/尾 @、昵称唤起），再扫描消息全部段位兜底。
+    """
+    if not isinstance(event, MessageEvent):
+        return False
+    if event.is_tome():
+        return True
+    return any(
+        seg.type == "at" and str(seg.data.get("qq", "")) == str(event.self_id)
+        for seg in event.message
+    )
+
 # nonebot中标准注册事件响应器
 ai_chat = on_message(
-    rule = to_me(),
+    rule = Rule(at_me_rule),
     priority = 10,
     block = False,
 )
