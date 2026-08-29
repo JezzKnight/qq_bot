@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from prompts.service import prompt_service
 
@@ -19,7 +20,7 @@ class SearchAgent(BaseSubAgent):
         tool_registry: dict[str, dict],
         usage_recorder: UsageRecorder | None = None,
     ) -> None:
-        now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = prompt_service.get_agent_prompt("search", current_time=now)
 
         super().__init__(client, tools, model, tool_registry, usage_recorder)

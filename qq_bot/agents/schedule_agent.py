@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from prompts.service import prompt_service
 
@@ -19,7 +20,7 @@ class ScheduleTaskAgent(BaseSubAgent):
         tool_registry: dict[str, dict],
         usage_recorder: UsageRecorder | None = None,
     ) -> None:
-        now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
         self.system_prompt = prompt_service.get_agent_prompt("schedule", current_time=now, user_task=prompt)
 
         super().__init__(client, tools, model, tool_registry, usage_recorder)
@@ -27,4 +28,5 @@ class ScheduleTaskAgent(BaseSubAgent):
 
     def _build_task_prompt(self, **kwargs) -> str:
         """返回用户消息——简单告知开始执行即可，核心意图已经在 system_prompt 里"""
-        return f"请开始执行上述任务。当前时间：{datetime.now().isoformat()}"
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
+        return f"请开始执行上述任务。当前时间：{now}"
