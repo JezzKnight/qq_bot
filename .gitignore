@@ -143,6 +143,8 @@ dmypy.json
 docs/
 data/
 test/
+scripts/
+.ruff_cache/
 
 # 热重载触发文件（/reboot 指令写入以触发 nb run --reload 重启）
 reload_trigger.py
@@ -152,3 +154,4 @@ reload_trigger.py
 AGENTS.md
 CLAUDE.md
 run_bot.bat
+
