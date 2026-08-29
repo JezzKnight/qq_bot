@@ -6,13 +6,19 @@ from typing import Any
 from .types import ChatMessage, ChatResponse
 
 class Geminiclient():
-    def __init__(self, api_key: str):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+    ):
         self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        # 保留 trust_env 默认（True）：Gemini 域名在国内需走代理访问
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
 
     async def chat(self, messages: list[ChatMessage], model: str | None=None, tools = None, **kwargs):
         model_name = model or "gemini-3.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+        url = f"{self.base_url}/models/{model_name}:generateContent?key={self.api_key}"
 
         payload = self._build_gemini_payload(messages = messages, tools = tools, **kwargs, )
         max_retries = 3

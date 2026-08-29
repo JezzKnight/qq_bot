@@ -5,14 +5,20 @@ from .types import ChatMessage, ChatResponse
 
 class Openaiclient:
     # httpx.AsyncClient构造函数是同步的，只创建对象不涉及IO
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        default_model: str = "deepseek-chat",
+    ):
         self.base_url = base_url.rstrip("/") + "/chat/completions"
         self.api_key = api_key
-        self.default_model = "deepseek-chat"
+        self.default_model = default_model
         # 在init中创建对象复用连接池
         # trust_env=False：不读取系统环境代理（如 ZodAccess 等本地代理软件注入的 HTTP_PROXY）。
         # 若不关掉，发往本机 llama.cpp（127.0.0.1）的请求会被代理劫持，导致连接被重置 / 返回空响应。
-        # 本客户端服务 DeepSeek 与本地模型，均需直连；Gemini 客户端保留代理（Google 在国内需代理才能访问）。
+        # 本客户端服务 DeepSeek/GLM（智谱 BigModel）等 OpenAI 兼容模型与本地模型，均需直连；
+        # Gemini 客户端保留代理（Google 在国内需代理才能访问）。
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0), trust_env=False)
 
     # **kwargs就是一个普通字典，操作方法与字典一致
@@ -30,13 +36,14 @@ class Openaiclient:
         for m in messages:
             msg: dict[str, Any] = {"role": m.role}
             if m.content is not None:
-                # 图片处理：如果有图片，将 content 转为 OpenAI vision 格式的 content parts 数组
-                if m.images and m.role == "user":
+                # 媒体处理：有图片/视频 URL 时，将 content 转为 OpenAI vision 格式的 content parts 数组
+                if (m.images or m.media_urls) and m.role == "user":
                     import base64
                     content_parts: list[dict[str, Any]] = []
                     if m.content:
                         content_parts.append({"type": "text", "text": m.content})
-                    for img in m.images:
+                    # 图片：base64 内联
+                    for img in m.images or []:
                         b64 = base64.b64encode(img.data).decode("utf-8")
                         content_parts.append({
                             "type": "image_url",
@@ -44,6 +51,11 @@ class Openaiclient:
                                 "url": f"data:{img.mine_type};base64,{b64}"
                             }
                         })
+                    # 视频/图片 URL：直接透传公开地址（支持视频的模型的官方推荐方式）
+                    content_parts.extend(
+                        {"type": "image_url", "image_url": {"url": url}}
+                        for url in (m.media_urls or [])
+                    )
                     msg["content"] = content_parts
                 else:
                     msg["content"] = m.content

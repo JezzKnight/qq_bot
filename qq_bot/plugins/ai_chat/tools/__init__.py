@@ -9,7 +9,6 @@ from .context import (
     current_send_msg,
     current_sender_name,
 )
-from .get_current_time import get_current_time
 from .query_chat_history import query_chat_history
 from .recall_memory import recall_memory
 from .registry import TOOLS, get_tools_schema, register_tool
@@ -18,6 +17,7 @@ from .save_glossary import save_glossary
 from .save_memory import save_memory
 from .schedule_reminder import schedule_reminder_tool
 from .search_agent_tool import search_agent
+from .vision import image_understand
 from .web_fetch import web_fetch_by_tavily
 from .web_search import web_search_by_tavily
 
@@ -31,8 +31,8 @@ __all__ = [
     "current_search_tracker",
     "current_send_msg",
     "current_sender_name",
-    "get_current_time",
     "get_tools_schema",
+    "image_understand",
     "query_chat_history",
     "recall_memory",
     "register_tool",

@@ -16,6 +16,8 @@ class ChatMessage:
     reasoning_content: str | None = None
     # 为gemini多模态准备的字段
     images: list[ImageData] | None = None
+    # 媒体 URL（视频/图片）：直接透传给 OpenAI 兼容模型的 image_url.url（不下载）
+    media_urls: list[str] | None = None
     raw_parts: list[dict] | None = None
     
 
