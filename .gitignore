@@ -143,6 +143,9 @@ dmypy.json
 docs/
 data/
 test/
+
+# 热重载触发文件（/reboot 指令写入以触发 nb run --reload 重启）
+reload_trigger.py
 .agents/
 .claude/
 .vscode/
