@@ -1,13 +1,20 @@
 import json
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import cast
 from prompts.service import prompt_service
 from .config import AiChatConfig
 from ...ai.types import ChatMessage
 from . import lifecycle
 from . import token_usage
-from .utils import split_message, extract_images, scan_and_save_members, get_group_members
+from .utils import (
+    split_message,
+    extract_images,
+    extract_video_urls,
+    scan_and_save_members,
+    get_group_members,
+)
 from .memory_writing import get_memory
 from .client_factory import get_client_for_model
 from .dynamic_injection import build_memory_injection, build_private_injection
@@ -53,8 +60,9 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                 content = f'[用户引用了 {sender} 的消息："{raw}"]\n{content}'
                 print(repr(content))
 
-    # 添加空内容回复规则
-    if not content:
+    # 添加空内容回复规则：仅当既无文字也无图片时回表情包；纯图片消息继续走图片处理
+    has_image = any(seg.type == "image" for seg in event.get_message())
+    if not content and not has_image:
         # 通过函数获取路径，直接写死不够鲁棒/直接写路径一直报no such file错误，改用base64编码/错误原因写入的是字符串导致的格式识别错误，现在是通过python解析二进制文件直接传入
         sticker_path = get_plugin_data_dir() / "stickers" / "what.jpg"
         print("文件存在吗？", sticker_path.exists())
@@ -76,8 +84,8 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     memory = await get_memory(config)
     history = await memory.get_history(session_id)
     # 构建prompt
-    time_now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-    system_part = prompt_service.get_system_prompt(current_time=time_now)
+    time_now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
+    system_part = prompt_service.get_system_prompt()
     # 多用户提示词注入
     if isinstance(event, GroupMessageEvent):
         member_info = get_group_members(event.group_id)
@@ -89,11 +97,7 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         if not member_info:
             member_info = "暂无群成员信息"
 
-        group_part = prompt_service.get_group_prompt(
-            user_id=str(event.user_id),
-            user_name=sender_name,
-            member_info=member_info,
-        )
+        group_part = prompt_service.get_group_prompt(member_info=member_info)
         # 动态记忆注入（仅群聊）：必注入本人+群公共记忆，按需注入提及成员与术语
         memory_prompt = None
         if config.memory_injection_enabled:
@@ -124,16 +128,29 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         memory_part = f"以下是本轮对话动态注入的长期记忆：\n{memory_prompt}"
     else:
         memory_part = ""
-    # 拼接最终的prompt
-    final_prompt = f"{group_part}\n\n{memory_part}\n\n{system_part}"
+    # 动态注入（每轮对话都会变化的部分）：统一追加到静态内容之后，
+    # 让系统提示词保持稳定前缀，最大化命中模型服务的 prompt 缓存
+    speaker_part = f'当前发言人: uid="{event.user_id}", name="{sender_name}"'
+    time_part = f"当前对话发生的时间为{time_now} (UTC+8)，以此时间为准"
+    # 拼接最终的prompt：静态系统提示词 → 群/私聊身份规则 → 动态注入（发言人→记忆→时间）
+    final_prompt = "\n\n".join(
+        filter(None, [system_part, group_part, speaker_part, memory_part, time_part])
+    )
     messages= [ChatMessage(role="system", content=f"{final_prompt}")]
     # 直接将对话记录紧跟在prompt后面
     messages.extend(history)
-    # 将图片信息传入messages中，让geminiclient中来处理
-    images = await extract_images(event)
-    print(f"[DEBUG] {images}")
+    # 媒体处理：图片下载为二进制传给主模型；视频 URL 直接透传
+    # （OpenAI 兼容模型支持在 image_url.url 传公开可访问的视频地址，由模型理解内容）
+    images = await extract_images(event) or None
+    video_urls = extract_video_urls(event)
     identity_tag = f'<user identity id="{event.user_id}" name="{sender_name}"/>'
-    messages.append(ChatMessage(role=f"user", content=f"{identity_tag}\n{content}", sender_name=sender_name, images=images or None))
+    messages.append(ChatMessage(
+        role="user",
+        content=f"{identity_tag}\n{content}",
+        sender_name=sender_name,
+        images=images,
+        media_urls=video_urls or None,
+    ))
     messages = memory.trim_if_needed(messages, config.max_context_tokens)
     # 加入工具调用处理
     search_agent_called = False  # 每次对话只允许调用一次 search_agent
@@ -144,7 +161,15 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
             temperature = config.ai_temperature,
             max_tokens = config.ai_max_tokens,
             # 工具列表
-            tools = get_tools_schema("search_agent", "save_memory", "save_glossary", "recall_memory", "cancel_reminder", "schedule_reminder", "query_chat_history")
+            tools = get_tools_schema(
+                "search_agent",
+                "save_memory",
+                "save_glossary",
+                "recall_memory",
+                "cancel_reminder",
+                "schedule_reminder",
+                "query_chat_history",
+            )
         )
         # 记录本次调用的 token 消耗（失败请求内部自动跳过）
         await token_usage.record(

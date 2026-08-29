@@ -1,3 +1,4 @@
+import re
 import httpx
 import json
 from ...ai.types import ImageData
@@ -76,25 +77,65 @@ def split_message(text: str) -> list[str]:
     return chunks
 
 
+async def download_image(url: str) -> ImageData | None:
+    """从图片 URL 下载二进制数据，失败返回 None（extract_images 与视觉工具共用）"""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                # 从响应头中获取类型
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                return ImageData(data=resp.content, mine_type=content_type)
+    except Exception:
+        print("[INFO] 图片下载失败")
+        return None
+    return None
+
+
 async def extract_images(event: MessageEvent) -> list[ImageData]:
-    """提取图片"""
+    """提取图片二进制，复用 download_image 逐张下载"""
     images = []
     for i in event.get_message():
         if i.type == "image":
-            img_url= i.data.get("url")
+            img_url = i.data.get("url")
             if not img_url:
                 continue
-            try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
-                      resp = await client.get(img_url)
-                      if resp.status_code == 200:
-                          # 从响应头中获取类型
-                          content_type = resp.headers.get("content-type", "image/jpeg")
-                          images.append(ImageData(
-                              data=resp.content,
-                              mine_type=content_type
-                          ))
-            except Exception:
-                print("[INFO] 图片下载失败")
-                continue
+            img = await download_image(img_url)
+            if img:
+                images.append(img)
     return images
+
+
+def extract_image_urls(event: MessageEvent) -> list[str]:
+    """提取消息中的图片 URL 列表（不下载，用于注入上下文让主模型触发视觉工具）"""
+    return [
+        seg.data["url"]
+        for seg in event.get_message()
+        if seg.type == "image" and seg.data.get("url")
+    ]
+
+
+# 文本中识别视频链接：先抓出 URL，再按扩展名判断是否视频文件
+_URL_PATTERN = re.compile(r"https?://[^\s<>\"'，。；、]+", re.IGNORECASE)
+_VIDEO_EXTENSIONS = ("mp4", "webm", "mov", "mkv", "avi", "m4v", "3gp", "flv", "m3u8")
+
+
+def extract_video_urls(event: MessageEvent) -> list[str]:
+    """提取消息中的视频 URL，用于透传给模型（image_url.url 传公开可访问的视频地址）。
+
+    来源：① QQ 视频消息段（video 段的 url 字段）；② 文本里带视频文件扩展名的链接。
+    """
+    urls: list[str] = []
+    for seg in event.get_message():
+        if seg.type == "video":
+            u = seg.data.get("url")
+            if u:
+                urls.append(str(u))
+        elif seg.type == "text":
+            text = seg.data.get("text", "") or ""
+            for u in _URL_PATTERN.findall(text):
+                # 去掉查询串/锚点/末尾斜杠后，按扩展名判定是否视频
+                path = u.split("?", 1)[0].split("#", 1)[0].rstrip("/").lower()
+                if path.endswith(_VIDEO_EXTENSIONS):
+                    urls.append(u)
+    return urls
