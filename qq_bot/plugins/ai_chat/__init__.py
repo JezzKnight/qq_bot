@@ -1,20 +1,27 @@
-from nonebot import on_message
-from nonebot.rule import Rule
-from nonebot.plugin import PluginMetadata
+from nonebot import get_plugin_config, on_message
 from nonebot.adapters import Event
-from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot import get_plugin_config
+from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
+
+from qq_bot.logging_config import init_logging
+
+from .commands import (
+    clear_memory,
+    get_pixiv,
+    help,
+    list_reminders,
+    reboot,
+    scan_members,
+    switch_model,
+    usage,
+)
 from .config import AiChatConfig
 from .handler import handle_ai_chat
-from .commands import clear_memory
-from .commands import get_pixiv
-from .commands import switch_model
-from .commands import help
-from .commands import scan_members
-from .commands import list_reminders
-from .commands import reboot
-from .commands import usage
+
+init_logging()
+
 
 async def keyword_rule(event: Event) -> bool:
     """
@@ -27,6 +34,7 @@ async def keyword_rule(event: Event) -> bool:
     text = event.get_plaintext().strip().lower()
     # 循环配置里写的关键词然后当关键词在text中被提及的时候any返回True
     return any(kw.lower() in text for kw in config.trigger_keywords)
+
 
 async def at_me_rule(event: Event) -> bool:
     """任意位置 @机器人 即触发。
@@ -44,12 +52,14 @@ async def at_me_rule(event: Event) -> bool:
         for seg in event.message
     )
 
+
 # nonebot中标准注册事件响应器
 ai_chat = on_message(
-    rule = Rule(at_me_rule),
-    priority = 10,
-    block = False,
+    rule=Rule(at_me_rule),
+    priority=10,
+    block=False,
 )
+
 
 @ai_chat.handle()
 async def handle(event: MessageEvent, matcher: Matcher):

@@ -142,6 +142,7 @@ dmypy.json
 
 docs/
 data/
+logs/
 test/
 scripts/
 .ruff_cache/

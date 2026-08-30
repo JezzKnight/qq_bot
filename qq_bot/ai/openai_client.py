@@ -96,7 +96,7 @@ class Openaiclient:
                 break
             except Exception as e:
                 last_error = e
-                
+
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt  # 1s, 2s, 4s 指数退避
                     print(
