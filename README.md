@@ -15,7 +15,7 @@
 - **图片/视频理解**：支持向支持视觉的多模态模型传图片或视频链接
 - **Pixiv 榜单图**：`/pixiv` 随机获取日榜/周榜等排行榜图片
 - **Token 用量统计**：`/usage` 查询每日消耗
-- **热重载开发**：`nb run --reload`，改代码自动整进程重启；QQ 内 `/reboot` 远程重启
+- **自动重启**：`run_bot.bat` 死循环拉起 `bot.py`，进程崩溃或 `/reboot` 后 3 秒自动恢复
 
 ---
 
@@ -52,18 +52,16 @@ pip install -e ".[dev]"
 # 3. 配置 .env（参照下方「配置」一节填写）
 #    也可直接复制项目根目录的 .env 模板后修改
 
-# 4. 启动（带热重载）
-nb run --reload
+# 4. 启动（Windows 直接运行 run_bot.bat）
+run_bot.bat
 ```
 
-> 也可直接运行 `run_bot.bat`（Windows 本地脚本，已被 gitignore）。
+### 启动与重启
 
-### 热重载说明
-
-- 修改任意 `*.py` 或 `pyproject.toml` 会自动**整进程重启**（nb-cli 监听文件变化）
-- 修改 `.env` **不会**触发重载，需手动重启
-- 进程崩溃不会自动拉起，需要重新运行 `nb run --reload`
-- QQ 内对机器人说 `/reboot` 可触发一次重启（仅管理员白名单）
+- **启动**：直接运行 `run_bot.bat`（Windows 本地脚本，已被 gitignore）——死循环执行 `python bot.py`，进程退出后等待 3 秒自动重启
+- 入口脚本为 `bot.py`，手动启动等价于：`python bot.py`
+- **QQ 内远程重启**：对机器人说 `/reboot`（仅 `ADMIN_USERS` 白名单），通过 `os._exit(0)` 结束进程，由 `run_bot.bat` 的循环自动拉起
+- 修改代码后需手动重启（无热重载）；`run_bot.bat` 的循环机制保证崩溃后自动恢复
 
 ---
 
@@ -144,7 +142,7 @@ GEMINI_API_KEY=your_gemini_key      # Gemini 模型
 
 ```
 qq_bot/
-├── bot.py                      # （已废弃删除，改用 nb run --reload）
+├── bot.py                      # 启动入口（run_bot.bat 循环执行）
 ├── pyproject.toml              # [tool.nonebot] 插件/适配器声明 + ruff/pyright 配置
 ├── qq_bot/
 │   ├── ai/                     # AI 客户端层（OpenAI 兼容 + Gemini 转换）
