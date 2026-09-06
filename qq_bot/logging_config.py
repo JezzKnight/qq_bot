@@ -7,8 +7,9 @@
   print 语句本身保留）
 
 文件策略：
-- ``logs/bot.log``    全量 INFO+ 运行日志，每天 00:00 轮转，保留 30 天
-- ``logs/error.log``  ERROR+ 错误日志单独一份，按大小轮转，方便快速定位
+- ``logs/bot-YYYY-MM-DD.log``    全量 INFO+ 运行日志，按日期分文件，保留 30 天
+- ``logs/error-YYYY-MM-DD.log``  ERROR+ 错误日志单独一份，同样按日期分文件
+- 文件名中的 ``{time}`` 由 loguru 在每次轮转（每天 00:00）时替换为当天日期
 - ``enqueue=True`` 后台线程异步落盘，避免阻塞事件循环
 - ``encoding="utf-8"`` 保证 Windows 下中文不乱码
 """
@@ -79,9 +80,9 @@ def init_logging() -> None:
         root.addHandler(LoguruHandler())
         root.setLevel(logging.INFO)
 
-        # 全量运行日志
+        # 全量运行日志：按日期分文件（{time} 在轮转时替换为当天日期）
         logger.add(
-            _LOG_DIR / "bot.log",
+            _LOG_DIR / "bot-{time:YYYY-MM-DD}.log",
             level="INFO",
             rotation="00:00",
             retention="30 days",
@@ -91,11 +92,11 @@ def init_logging() -> None:
             backtrace=False,
             format=_FILE_FORMAT,
         )
-        # 错误日志单独一份
+        # 错误日志单独一份，同样按日期分文件
         logger.add(
-            _LOG_DIR / "error.log",
+            _LOG_DIR / "error-{time:YYYY-MM-DD}.log",
             level="ERROR",
-            rotation="20 MB",
+            rotation="00:00",
             retention="30 days",
             encoding="utf-8",
             enqueue=True,
