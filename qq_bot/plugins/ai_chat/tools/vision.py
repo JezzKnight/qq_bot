@@ -1,7 +1,7 @@
 """视觉理解工具：通过本地部署的 VL 模型赋予 bot 图片理解能力。
 
-图片分析统一走独立配置的本地视觉模型——复用 Openaiclient 客户端，
-但单独配置 base_url/api_key/model，与主模型完全解耦；
+图片分析统一走独立配置的本地视觉模型——复用统一的 OpenAI 兼容传输层
+（OpenaiCompatClient），但单独配置 base_url/api_key/model，与主模型完全解耦；
 该模型的 token 消耗不计入主模型的用量统计（不调用 token_usage.record）。
 """
 from datetime import datetime
@@ -64,7 +64,7 @@ async def image_understand(intent: str, urls: list[str]) -> str:
     )
     messages = [
         ChatMessage(role="system", content=system_prompt),
-        # 图片走 images 字段，由 Openaiclient 转成 OpenAI vision 格式的 content parts
+        # 图片走 images 字段，由 OpenaiCompatClient 转成 vision 格式 content parts
         ChatMessage(role="user", content=intent, images=images),
     ]
 

@@ -16,7 +16,7 @@ from .utils import (
     get_group_members,
 )
 from .memory_writing import get_memory
-from .client_factory import get_client_for_model
+from .client_factory import get_client_for_model, get_model_profile
 from .dynamic_injection import build_memory_injection, build_private_injection
 from .session_store import _load_session_models, get_session_model
 from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name, current_search_tracker, SearchTracker
@@ -85,7 +85,13 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     history = await memory.get_history(session_id)
     # 构建prompt
     time_now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
-    system_part = prompt_service.get_system_prompt()
+    # 多模态能力判定：主模型 supports_vision/video 时才在系统提示词拼装媒体规则；
+    # 普通文本模型（False/未知）不带，保持其提示词前缀逐字节不变（§37 prompt 缓存）
+    profile = get_model_profile(config, model_name)
+    include_media = bool(
+        profile.capabilities.supports_vision or profile.capabilities.supports_video
+    )
+    system_part = prompt_service.get_system_prompt(include_multimodal=include_media)
     # 多用户提示词注入
     if isinstance(event, GroupMessageEvent):
         member_info = get_group_members(event.group_id)
@@ -183,7 +189,6 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         assistant_msg = ChatMessage(
             role="assistant",
             tool_calls=response.tool_calls,
-            raw_parts=response.raw_parts,
             reasoning_content=response.reasoning_content,
         )
         messages.append(assistant_msg)

@@ -15,14 +15,28 @@ class PromptService:
         "capabilities",
         "style",
     )
+    # 多模态媒体规则目录：不入 _SYSTEM_CATEGORIES（避免对普通文本模型无条件拼装），
+    # 仅当当前会话主模型具备多模态能力（supports_vision / supports_video）时，
+    # 由调用方经 get_system_prompt(include_multimodal=True) 追加在静态片段末尾。
+    _MULTIMODAL_CATEGORY = "multimodal"
 
     def __init__(self, loader: PromptLoader, renderer: PromptRenderer) -> None:
         self._loader = loader
         self._renderer = renderer
 
-    def get_system_prompt(self, **variables: str) -> str:
-        """获取聊天系统提示词，按 persona → constraints → preferences 顺序组装"""
-        template = self._assemble_from_dir("chat/system")
+    def get_system_prompt(
+        self, *, include_multimodal: bool = False, **variables: str
+    ) -> str:
+        """获取聊天系统提示词（静态 persona → style 顺序拼装）。
+
+        include_multimodal=True 时在静态片段末尾追加多模态媒体规则
+        （chat/system/multimodal/），供多模态主模型的对话使用；普通文本模型
+        走默认值 False，提示词与其历史版本逐字节一致，最大化命中前缀缓存。
+        """
+        categories: tuple[str, ...] = self._SYSTEM_CATEGORIES
+        if include_multimodal:
+            categories = (*categories, self._MULTIMODAL_CATEGORY)
+        template = self._assemble_from_dir("chat/system", categories=categories)
         return self._renderer.render(template, **variables)
 
     def get_group_prompt(self, **variables: str) -> str:
@@ -35,17 +49,19 @@ class PromptService:
         template = self._loader.load(f"agents/{agent_name}.md")
         return self._renderer.render(template, **variables)
 
-    def _assemble_from_dir(self, relative_dir: str) -> str:
+    def _assemble_from_dir(
+        self, relative_dir: str, categories: tuple[str, ...] | None = None
+    ) -> str:
         """从目录加载所有分类子目录下的 .md 片段，按顺序拼接。
 
-        relative_dir 下按 _SYSTEM_CATEGORIES 顺序扫描各子目录，
+        relative_dir 下按 categories（缺省 _SYSTEM_CATEGORIES）顺序扫描各子目录，
         每个子目录内的 .md 文件按文件名排序读取。
         只包含 .md 后缀的文件（.disabled、.md.bak 等会被忽略），
         方便通过重命名来热插拔特定规则。
         """
         base = self._loader.base_dir / relative_dir
         parts: list[str] = []
-        for category in self._SYSTEM_CATEGORIES:
+        for category in categories or self._SYSTEM_CATEGORIES:
             cat_dir = base / category
             if not cat_dir.is_dir():
                 continue

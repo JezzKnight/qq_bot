@@ -1,6 +1,6 @@
 # 🐋 qq_bot
 
-基于 **NoneBot2 + OneBot V11** 的 QQ 群聊机器人。核心能力是与多模型 AI 对话（DeepSeek / 智谱 GLM / Gemini），并具备**工具调用、长期记忆、定时提醒、网页搜索**等增强能力。
+基于 **NoneBot2 + OneBot V11** 的 QQ 群聊机器人。核心能力是与多模型 AI 对话（DeepSeek / 硅基流动 / 智谱 GLM 等 OpenAI 兼容平台），并具备**工具调用、长期记忆、定时提醒、网页搜索**等增强能力。
 
 ---
 
@@ -25,7 +25,7 @@
 |------|------|
 | 框架 | NoneBot2 ≥ 2.5.0（FastAPI + WebSocket 驱动） |
 | 协议 | OneBot V11 适配器 |
-| AI 客户端 | 自研 OpenAI 兼容层 + Gemini 原生格式转换（`qq_bot/ai/`） |
+| AI 客户端 | 统一模型网关层：单一 OpenAI 兼容传输 + 能力元数据（`qq_bot/ai/`） |
 | 存储 | SQLite（aiosqlite，WAL）+ 文件系统（长期记忆） |
 | 调度 | APScheduler |
 | 搜索 | Tavily API |
@@ -93,7 +93,6 @@ STARTUP_NOTIFY_GROUP=0              # 启动通知群号，0 关闭
 # ── 可选功能 ──
 TAVILY_KEY=your_tavily_key          # 网页搜索
 REFRESH_TOKEN=your_pixiv_token      # Pixiv 榜单图
-GEMINI_API_KEY=your_gemini_key      # Gemini 模型
 ```
 
 其他可调配置见 [qq_bot/plugins/ai_chat/config.py](qq_bot/plugins/ai_chat/config.py)（如 `cooldown_seconds`、`max_context_tokens`、`reply_max_length`、`max_daily_calls_per_user`、`memory_injection_enabled` 等）。
@@ -145,7 +144,7 @@ qq_bot/
 ├── bot.py                      # 启动入口（run_bot.bat 循环执行）
 ├── pyproject.toml              # [tool.nonebot] 插件/适配器声明 + ruff/pyright 配置
 ├── qq_bot/
-│   ├── ai/                     # AI 客户端层（OpenAI 兼容 + Gemini 转换）
+│   ├── ai/                     # 模型网关层（统一 OpenAI 兼容传输 + 能力元数据）
 │   ├── agents/                 # 子代理系统（SearchAgent、ScheduleTaskAgent）
 │   ├── memory/                 # 记忆基础设施（SQLite 会话历史）
 │   └── plugins/

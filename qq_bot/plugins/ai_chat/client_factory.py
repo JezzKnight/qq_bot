@@ -1,16 +1,18 @@
-"""将原先handler中搭建模型客户端的职责独立出来，并为其他模块单独提供客户端，这样所有利用这个模块客户端的部分共享连接池。
+"""客户端工厂 → 模型网关的薄适配器。
 
-客户端以 (base_url, api_key) 为键缓存：多模型注册表（AI_MODELS）下不同模型
-可能指向不同端点/密钥，切换模型时必须按配置创建/复用对应客户端，
-不能用单一全局单例，否则切换后仍打到旧端点。
+本模块是 NoneBot 插件层与纯服务层 qq_bot/ai 网关之间的唯一桥梁：
+把 AiChatConfig（pydantic/env）解析成网关所需参数，并持有全局 ModelGateway 单例。
+调用方（handler / tools / agents）拿到的仍是带 .chat() 的 OpenAI 兼容客户端，
+签名与旧版完全一致——模型层只有唯一的 OpenAI 兼容传输实现，无 Gemini 分支。
 """
-from .config import AiChatConfig, ModelConfig
-from ...ai.openai_client import Openaiclient
-from ...ai.gemini_client import Geminiclient
+from qq_bot.ai.capabilities import CAPABILITY_FIELDS, ModelCapabilities
+from qq_bot.ai.model_gateway import ModelGateway, ModelProfile
+from qq_bot.ai.openai_client import OpenaiCompatClient
 
-_openai_clients: dict[tuple[str, str], Openaiclient] = {}
-_gemini_clients: dict[tuple[str, str], Geminiclient] = {}
-_vision_client: Openaiclient | None = None
+from .config import AiChatConfig, ModelConfig
+
+# 全局网关：按 (base_url, api_key) 维护连接池 + 模型画像解析
+_gateway = ModelGateway()
 
 
 def _resolve_model_entry(config: AiChatConfig, model: str) -> ModelConfig | None:
@@ -21,60 +23,62 @@ def _resolve_model_entry(config: AiChatConfig, model: str) -> ModelConfig | None
     return None
 
 
-async def get_openai_client(
-    config: AiChatConfig,
-    base_url: str | None = None,
-    api_key: str | None = None,
-) -> Openaiclient:
-    """获取 OpenAI 兼容客户端，按 (base_url, api_key) 复用连接池"""
-    base_url = base_url or config.ai_base_url
-    api_key = api_key or config.ai_api_key
-    key = (base_url, api_key)
-    if key not in _openai_clients:
-        _openai_clients[key] = Openaiclient(base_url=base_url, api_key=api_key)
-    return _openai_clients[key]
+def _to_explicit_capabilities(entry: ModelConfig | None) -> ModelCapabilities | None:
+    """把注册表条目的可选能力字段映射为显式能力层。
 
-
-async def get_gemini_client(
-    config: AiChatConfig,
-    base_url: str | None = None,
-    api_key: str | None = None,
-) -> Geminiclient:
-    """获取 Gemini 客户端，按 (base_url, api_key) 复用连接池"""
-    base_url = base_url or "https://generativelanguage.googleapis.com/v1beta"
-    api_key = api_key or config.gemini_api_key
-    key = (base_url, api_key)
-    if key not in _gemini_clients:
-        _gemini_clients[key] = Geminiclient(base_url=base_url, api_key=api_key)
-    return _gemini_clients[key]
-
-
-async def get_vision_client(config: AiChatConfig) -> Openaiclient:
-    """获取本地视觉模型客户端（复用 Openaiclient，独立连接池与独立配置）。
-
-    视觉模型走本地 VL 服务，与主模型完全解耦；该客户端的调用不计入 token 统计。
+    全部为空时返回 None，让网关走内置默认表而非空覆盖。
     """
-    global _vision_client
-    if _vision_client is None:
-        _vision_client = Openaiclient(
-            base_url=config.vision_base_url,
-            api_key=config.vision_api_key,
-            default_model=config.vision_model,
-        )
-    return _vision_client
+    if entry is None:
+        return None
+    fields = {f: getattr(entry, f) for f in CAPABILITY_FIELDS}
+    if all(v is None for v in fields.values()):
+        return None
+    return ModelCapabilities(**fields)
 
 
-async def get_client_for_model(config: AiChatConfig, model: str):
-    """按模型名选择客户端：优先从注册表解析 base_url/api_key，未命中回退 legacy 配置"""
-    is_gemini = "gemini" in model.lower()
+async def get_client_for_model(config: AiChatConfig, model: str) -> OpenaiCompatClient:
+    """按模型名取（复用）OpenAI 兼容客户端。
+
+    注册表命中用条目端点/密钥；未命中回退 legacy ai_base_url/ai_api_key。
+    多模型注册表下不同模型可能指向不同端点/密钥，切换模型时必须按
+    (base_url, api_key) 取对应客户端，不能用单一全局单例。
+    """
     entry = _resolve_model_entry(config, model)
     if entry is not None:
-        base_url, api_key = entry.base_url, entry.api_key
-        if is_gemini:
-            return await get_gemini_client(config, base_url=base_url, api_key=api_key)
-        return await get_openai_client(config, base_url=base_url, api_key=api_key)
+        return _gateway.get_client(entry.base_url, entry.api_key)
+    return _gateway.get_client(config.ai_base_url, config.ai_api_key)
 
-    # legacy 回退：Gemini 走固定 Google 端点 + gemini_api_key；其余走主配置
-    if is_gemini:
-        return await get_gemini_client(config)
-    return await get_openai_client(config)
+
+async def get_vision_client(config: AiChatConfig) -> OpenaiCompatClient:
+    """取本地视觉模型客户端（复用统一网关）。
+
+    视觉模型走本地 VL 服务，独立 base_url/api_key/default_model 三件套，
+    与主模型配置解耦；该客户端的调用不计入 token 统计。
+    """
+    return _gateway.get_client(
+        config.vision_base_url,
+        config.vision_api_key,
+        default_model=config.vision_model,
+    )
+
+
+def get_model_profile(config: AiChatConfig, model: str) -> ModelProfile:
+    """解析模型画像（平台归属 + 能力元数据）。
+
+    当前暂无调用方，作为网关的公共能力面落地——后续"多模态 system prompt 片段 /
+    能力路由"直接按 capabilities.supports_vision / supports_video 判定即可。
+    """
+    entry = _resolve_model_entry(config, model)
+    if entry is not None:
+        return _gateway.get_profile(
+            model,
+            base_url=entry.base_url,
+            explicit=_to_explicit_capabilities(entry),
+            platform=entry.platform,
+        )
+    return _gateway.get_profile(model, base_url=config.ai_base_url)
+
+
+async def close_all() -> None:
+    """关闭全部模型连接池（生命周期 shutdown 调用，幂等）。"""
+    await _gateway.close_all()

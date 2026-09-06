@@ -7,16 +7,23 @@ class ModelConfig(BaseModel):
     name: str            # 模型名（/model 切换时使用的 key）
     base_url: str        # 该模型对应的服务端点
     api_key: str = ""    # 该模型对应的 API key
+    # ── 能力元数据（可选，缺省 None=未知；与 qq_bot/ai/capabilities.ModelCapabilities 一一对应）──
+    # 网关合并时：注册表显式值 > 内置默认表 > 名称启发式。不填则走内置知识。
+    supports_vision: bool | None = None      # 图片输入
+    supports_video: bool | None = None       # 视频/公开媒体 URL 透传
+    supports_tools: bool | None = None       # function calling
+    supports_reasoning: bool | None = None   # 思考模式（reasoning_content）
+    context_window: int | None = None        # 上下文窗口（token）
+    platform: str | None = None              # 平台标识覆盖（缺省按 base_url host 推断）
 
 
 class AiChatConfig(BaseModel):
     # 继承自pydantic的基类，能够继承两个能力，一、能够自动进行类型校验 二、自动从环境变量读取配置
     ai_base_url: str
     ai_api_key: str = " "
-    gemini_api_key: str = ""
     ai_model: str
     # 多模型注册表：/model 命令据此切换模型及其 base_url/api_key；
-    # 未配置（空）时回退使用 ai_base_url/ai_api_key/gemini_api_key 的旧单模型行为
+    # 未配置（空）时回退使用 ai_base_url/ai_api_key/ai_model 的旧单模型行为
     ai_models: list[ModelConfig] = []
     ai_temperature: float = Field(default=1.0, ge=0.0, le=2.0, description="AI的temperature参数在[0,2]之间")
     ai_max_tokens: int = 16384
@@ -45,7 +52,7 @@ class AiChatConfig(BaseModel):
             return json.loads(v)  # pydantic 自动把 dict 列表强转为 ModelConfig
         return v
 
-    # ── 本地视觉模型配置（复用 Openaiclient，但单独走本地 VL 服务）──
+    # ── 本地视觉模型配置（复用统一的 OpenAI 兼容传输层，单独走本地 VL 服务）──
     vision_base_url: str = ""               # 本地视觉模型服务地址，空表示未启用
     vision_api_key: str = ""
     vision_model: str = ""

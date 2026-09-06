@@ -11,7 +11,6 @@ LEGACY_ARGS = [
     "", "list",
     "glm-5.3-flash", "glm-5.3",
     "deepseek-v4-flash", "deepseek-v4-pro",
-    "gemini-3.5-flash",
 ]
 
 model_cmd = on_command(

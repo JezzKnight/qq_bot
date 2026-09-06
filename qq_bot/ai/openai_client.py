@@ -3,7 +3,12 @@ import asyncio
 from typing import Any
 from .types import ChatMessage, ChatResponse
 
-class Openaiclient:
+class OpenaiCompatClient:
+    """唯一的模型传输层：所有平台（DeepSeek / 硅基流动 / 智谱 BigModel / 本地模型）统一走 OpenAI 兼容接口。
+
+    网关层 ModelGateway 按 (base_url, api_key) 复用本客户端的 httpx 连接池。
+    """
+
     # httpx.AsyncClient构造函数是同步的，只创建对象不涉及IO
     def __init__(
         self,
@@ -17,8 +22,7 @@ class Openaiclient:
         # 在init中创建对象复用连接池
         # trust_env=False：不读取系统环境代理（如 ZodAccess 等本地代理软件注入的 HTTP_PROXY）。
         # 若不关掉，发往本机 llama.cpp（127.0.0.1）的请求会被代理劫持，导致连接被重置 / 返回空响应。
-        # 本客户端服务 DeepSeek/GLM（智谱 BigModel）等 OpenAI 兼容模型与本地模型，均需直连；
-        # Gemini 客户端保留代理（Google 在国内需代理才能访问）。
+        # 所有 OpenAI 兼容平台（含国内直连的 DeepSeek/GLM/SiliconFlow）均需直连。
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0), trust_env=False)
 
     # **kwargs就是一个普通字典，操作方法与字典一致

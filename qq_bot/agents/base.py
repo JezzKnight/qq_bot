@@ -94,7 +94,6 @@ class BaseSubAgent(ABC):
                 assistant_msg = ChatMessage(
                     role="assistant",
                     tool_calls=response.tool_calls,
-                    raw_parts=response.raw_parts,
                     reasoning_content=response.reasoning_content,
                 )
                 messages.append(assistant_msg)

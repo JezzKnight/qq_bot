@@ -61,11 +61,6 @@ async def cleanup() -> None:
     """退出时清理资源"""
     if memory_writing._Memory is not None:
         await memory_writing._Memory.close()
-    # 客户端按 (base_url, api_key) 缓存，逐个关闭所有连接池
-    for client in client_factory._openai_clients.values():
-        await client.close()
-    for client in client_factory._gemini_clients.values():
-        await client.close()
-    if client_factory._vision_client is not None:
-        await client_factory._vision_client.close()
+    # 模型客户端连接池统一收归网关（含主模型与本地视觉模型），一次关闭
+    await client_factory.close_all()
     await token_usage.close()
