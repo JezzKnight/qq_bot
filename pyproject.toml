@@ -10,6 +10,8 @@ dependencies = [
     "nonebot-plugin-status>=0.9.0",
     "nonebot-plugin-apscheduler>=0.5.0",
     "nonebot-plugin-localstore>=0.7.4",
+    # 发图给视觉模型前做压缩缩放，压低服务端视觉编码延迟（见 note #48）
+    "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]

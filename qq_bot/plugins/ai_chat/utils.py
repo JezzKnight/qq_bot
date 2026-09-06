@@ -2,6 +2,7 @@ import re
 import httpx
 import json
 from ...ai.types import ImageData
+from qq_bot.ai.image_prep import shrink_image_for_vision
 import xml.etree.ElementTree as ET
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot_plugin_localstore import get_plugin_data_dir
@@ -83,9 +84,10 @@ async def download_image(url: str) -> ImageData | None:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
-                # 从响应头中获取类型
+                # 从响应头中获取类型；超限大图先压缩缩放，再交给视觉模型
                 content_type = resp.headers.get("content-type", "image/jpeg")
-                return ImageData(data=resp.content, mine_type=content_type)
+                data, content_type = shrink_image_for_vision(resp.content, content_type)
+                return ImageData(data=data, mine_type=content_type)
     except Exception:
         print("[INFO] 图片下载失败")
         return None
