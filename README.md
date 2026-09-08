@@ -8,6 +8,7 @@
 
 - **多模型 AI 对话**：通过 `/model` 在 `AI_MODELS` 注册的多个模型间切换，群聊支持多用户身份识别（`<user identity>` 标签），私聊/群聊共用一套对话引擎
 - **工具调用（Function Calling）**：模型可在对话中自主调用搜索、记忆、提醒、图片理解等工具，最多 5 轮工具循环
+- **委托式主动互动**：在群里对 bot 说"帮我@老王聊聊他最近在忙啥"，bot 会由**隔离子 Agent** 生成一条开场并以 `@目标成员` 发出（仅群聊；发起人白名单可配，默认全员）
 - **长期记忆**：文件系统存储、按「群 × 用户」隔离；支持个人记忆 / 群共享记忆 / 私聊记忆，动态注入到提示词
 - **会话历史**：SQLite 存储，按 token 估算自动裁剪
 - **定时提醒**：AI 可通过 `schedule_reminder` 工具创建提醒，APScheduler 调度，重启后自动恢复未触发的任务
@@ -89,6 +90,7 @@ AI_MODELS=[{"name":"glm-5.3-flash","base_url":"...","api_key":"..."},{"name":"de
 BOT_SELF_ID=12345678                # bot 自身 QQ 号
 ADMIN_USERS=12345678                # 管理员白名单（/reboot 使用），逗号分隔
 STARTUP_NOTIFY_GROUP=0              # 启动通知群号，0 关闭
+INTERACT_ALLOWED_USER_IDS=[]        # 委托式主动互动发起人白名单，空=所有群成员可发起（JSON/逗号分隔）
 
 # ── 可选功能 ──
 TAVILY_KEY=your_tavily_key          # 网页搜索

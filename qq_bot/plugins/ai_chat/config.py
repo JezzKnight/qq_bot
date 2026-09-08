@@ -71,6 +71,32 @@ class AiChatConfig(BaseModel):
     enable_keyword_trigger: bool = False             # 关键词触发开关
     trigger_keywords: list[str] = ["bot", "机器人"]  # 触发关键词
 
+    # ── 委托式主动互动（interact_with_member）权限 ──
+    # 允许发起"帮我去@某位群成员开场"委托的 QQ 号白名单；空列表 = 所有群成员皆可用
+    interact_allowed_user_ids: list[int] = []
+
+    @field_validator("interact_allowed_user_ids", mode="before")
+    @classmethod
+    def parse_interact_allowed(cls, v: object) -> list[int]:
+        """解析 env：JSON 数组 / 逗号分隔 / 单数字 / 空值（对齐 parse_tavily_key）"""
+        if isinstance(v, list):
+            return [int(x) for x in v]
+        if isinstance(v, int):
+            return [v]
+        text = v.strip() if isinstance(v, str) else ""
+        if not text:
+            return []
+        import json
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = text
+        if isinstance(parsed, list):
+            return [int(x) for x in parsed]
+        if isinstance(parsed, int):
+            return [parsed]
+        return [int(x) for x in str(parsed).split(",") if x.strip()]
+
     # ── 频率控制 ──
     cooldown_seconds: int = 5                       # 单用户冷却秒数
     max_daily_calls_per_user: int = 200             # 每人每天最大调用次数

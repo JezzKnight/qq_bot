@@ -19,7 +19,15 @@ from .memory_writing import get_memory
 from .client_factory import get_client_for_model, get_model_profile
 from .dynamic_injection import build_memory_injection, build_private_injection
 from .session_store import _load_session_models, get_session_model
-from .tools import TOOLS, get_tools_schema, current_scope, current_sender_name, current_search_tracker, SearchTracker
+from .tools import (
+    TOOLS,
+    SearchTracker,
+    current_interaction,
+    current_scope,
+    current_search_tracker,
+    current_sender_name,
+    get_tools_schema,
+)
 
 import nonebot
 from nonebot.matcher import Matcher
@@ -160,22 +168,26 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     messages = memory.trim_if_needed(messages, config.max_context_tokens)
     # 加入工具调用处理
     search_agent_called = False  # 每次对话只允许调用一次 search_agent
+    # 工具列表：委托式主动互动只在群聊暴露（私聊中委托他人超出范围）
+    tool_names = [
+        "search_agent",
+        "save_memory",
+        "save_glossary",
+        "recall_memory",
+        "cancel_reminder",
+        "schedule_reminder",
+        "query_chat_history",
+    ]
+    if is_group:
+        tool_names.append("interact_with_member")
+    final_content = "AI暂时无法响应，请稍后重试"  # 兜底默认值（互动 break 分支不读它）
     for _ in range(5):
         response = await client.chat(
             messages=messages,
-            model = model_name,
-            temperature = config.ai_temperature,
-            max_tokens = config.ai_max_tokens,
-            # 工具列表
-            tools = get_tools_schema(
-                "search_agent",
-                "save_memory",
-                "save_glossary",
-                "recall_memory",
-                "cancel_reminder",
-                "schedule_reminder",
-                "query_chat_history",
-            )
+            model=model_name,
+            temperature=config.ai_temperature,
+            max_tokens=config.ai_max_tokens,
+            tools=get_tools_schema(*tool_names),
         )
         # 记录本次调用的 token 消耗（失败请求内部自动跳过）
         await token_usage.record(
@@ -245,8 +257,32 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
                 tool_call_id = tc["id"],
             )
             messages.append(tool_res_msg)
+        # 委托式主动互动成功：开场白已就绪，截断多轮，不再让主模型补一句确认
+        if current_interaction.get() is not None:
+            break
     else:
         final_content = "AI暂时无法响应，请稍后重试"
+
+    # ── 委托式主动互动成功：@A 开场是唯一可见回复，委托者不再单独收确认 ──
+    # 生成内容（子 Agent 产物）以 role=assistant 与委托消息成对写回历史，
+    # 保证 A 之后回复时主模型能接上"这是 bot 之前主动发给 A 的开场"。
+    interaction = current_interaction.get()
+    if interaction is not None:
+        opener = interaction["opener_text"]
+        await memory.append(
+            session_id,
+            sender_name,
+            f"{identity_tag}\n{content}",
+            opener,
+        )
+        msg = MessageSegment.at(int(interaction["target_uid"])) + MessageSegment.text(
+            "\n" + opener
+        )
+        current_interaction.set(None)
+        await matcher.send(msg)
+        # finish() 会抛出 FinishedException 结束本次事件（同下方群聊分支的用法），
+        # 因此不会继续落到通用 append / 回复逻辑，避免重复落库与重复发送。
+        await matcher.finish()
 
     # 添加至记忆中
     # 历史消息带上发言人身份标记：读回上下文时模型才能区分各成员发言；

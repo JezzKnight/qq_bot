@@ -3,12 +3,15 @@ from .batch_search import batch_search
 from .cancel_reminder import cancel_reminder_tool
 from .context import (
     AsyncSender,
+    InteractionPayload,
     SearchTracker,
+    current_interaction,
     current_scope,
     current_search_tracker,
     current_send_msg,
     current_sender_name,
 )
+from .interact_with_member import interact_with_member_tool
 from .query_chat_history import query_chat_history
 from .recall_memory import recall_memory
 from .registry import TOOLS, get_tools_schema, register_tool
@@ -24,15 +27,18 @@ from .web_search import web_search_by_tavily
 __all__ = [
     "TOOLS",
     "AsyncSender",
+    "InteractionPayload",
     "SearchTracker",
     "batch_search",
     "cancel_reminder_tool",
+    "current_interaction",
     "current_scope",
     "current_search_tracker",
     "current_send_msg",
     "current_sender_name",
     "get_tools_schema",
     "image_understand",
+    "interact_with_member_tool",
     "query_chat_history",
     "recall_memory",
     "register_tool",
