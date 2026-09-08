@@ -57,16 +57,19 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     # 获取用户发送内容
     content = event.get_plaintext().strip()
 
-    # 回复功能处理
-    # hasattr用于检测event对象有没有'reply'属性
-    if hasattr(event, 'reply') and event.reply:
-        reply_data = getattr(event, 'reply', None)
-        if reply_data:
-            sender = reply_data.sender.card or reply_data.sender.nickname or "未知"
-            raw = reply_data.raw_message
-            if raw:
-                content = f'[用户引用了 {sender} 的消息："{raw}"]\n{content}'
-                print(repr(content))
+    # 回复功能处理：被引用消息转成可读摘要（图片像素随后一并注入模型）
+    if event.reply is not None:
+        reply_data = event.reply
+        sender = reply_data.sender.card or reply_data.sender.nickname or "未知"
+        parts: list[str] = []
+        quoted_text = reply_data.message.extract_plain_text().strip()
+        if quoted_text:
+            parts.append(f'"{quoted_text}"')
+        img_count = sum(1 for seg in reply_data.message if seg.type == "image")
+        if img_count:
+            parts.append(f"[{img_count} 张图片]")
+        if parts:
+            content = f'[用户引用了 {sender} 的消息：{"，".join(parts)}]\n{content}'
 
     # 添加空内容回复规则：仅当既无文字也无图片时回表情包；纯图片消息继续走图片处理
     has_image = any(seg.type == "image" for seg in event.get_message())

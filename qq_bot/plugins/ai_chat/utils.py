@@ -95,11 +95,20 @@ async def download_image(url: str) -> ImageData | None:
 
 
 async def extract_images(event: MessageEvent) -> list[ImageData]:
-    """提取图片二进制，复用 download_image 逐张下载"""
-    images = []
-    for i in event.get_message():
-        if i.type == "image":
-            img_url = i.data.get("url")
+    """提取图片二进制：直接消息 + 被引用(reply)消息中的图片。
+
+    复用 download_image 逐张下载。OneBot 适配器已把被引用消息抓到
+    event.reply.message（结构化 Message，与普通消息同构，image 段带 url），
+    并入遍历目标后，引用图片与直发图片走同一链路被模型读到。
+    """
+    segments = list(event.get_message())
+    reply = getattr(event, "reply", None)
+    if reply is not None:
+        segments.extend(reply.message)
+    images: list[ImageData] = []
+    for seg in segments:
+        if seg.type == "image":
+            img_url = seg.data.get("url")
             if not img_url:
                 continue
             img = await download_image(img_url)
