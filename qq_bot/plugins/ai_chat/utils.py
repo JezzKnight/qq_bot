@@ -2,7 +2,7 @@ import re
 import httpx
 import json
 from ...ai.types import ImageData
-from qq_bot.ai.image_prep import shrink_image_for_vision
+from qq_bot.ai.image_prep import shrink_image_for_vision, sniff_image_mime
 import xml.etree.ElementTree as ET
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot_plugin_localstore import get_plugin_data_dir
@@ -86,6 +86,9 @@ async def download_image(url: str) -> ImageData | None:
             if resp.status_code == 200:
                 # 从响应头中获取类型；超限大图先压缩缩放，再交给视觉模型
                 content_type = resp.headers.get("content-type", "image/jpeg")
+                # 图床可能给出泛化/错误的 content-type（如 application/octet-stream），
+                # 以字节魔数为准，避免向下游声明错误的图片格式（note §72.2 / §75）
+                content_type = sniff_image_mime(resp.content, fallback=content_type)
                 data, content_type = shrink_image_for_vision(resp.content, content_type)
                 return ImageData(data=data, mine_type=content_type)
     except Exception:

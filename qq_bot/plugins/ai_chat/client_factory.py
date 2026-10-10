@@ -6,6 +6,7 @@
 签名与旧版完全一致——模型层只有唯一的 OpenAI 兼容传输实现，无 Gemini 分支。
 """
 from qq_bot.ai.capabilities import CAPABILITY_FIELDS, ModelCapabilities
+from qq_bot.ai.image_edit_client import ImageEditClient
 from qq_bot.ai.model_gateway import ModelGateway, ModelProfile
 from qq_bot.ai.openai_client import OpenaiCompatClient
 
@@ -13,6 +14,16 @@ from .config import AiChatConfig, ModelConfig
 
 # 全局网关：按 (base_url, api_key) 维护连接池 + 模型画像解析
 _gateway = ModelGateway()
+
+
+class _ImageEditState:
+    """图像编辑客户端单例状态（避免 global 语句，同 token_usage 的写法）"""
+
+    client: ImageEditClient | None = None
+    signature: tuple[str, str, str] | None = None
+
+
+_image_edit_state = _ImageEditState()
 
 
 def _resolve_model_entry(config: AiChatConfig, model: str) -> ModelConfig | None:
@@ -62,6 +73,37 @@ async def get_vision_client(config: AiChatConfig) -> OpenaiCompatClient:
     )
 
 
+async def get_image_edit_client(config: AiChatConfig) -> ImageEditClient:
+    """取图像编辑客户端（单例；关键配置变化时重建）。
+
+    图像编辑是独立协议 + 独立出口策略（境内直连、trust_env=False），
+    因此不复用 chat 连接池，单列一个客户端（见 note §61.2 / §70）。
+    """
+    signature = (
+        config.image_edit_base_url,
+        config.image_edit_api_key,
+        config.image_edit_model,
+    )
+    state = _image_edit_state
+    if state.client is not None and state.signature == signature:
+        return state.client
+    if state.client is not None:
+        await state.client.close()
+    state.client = ImageEditClient(
+        base_url=config.image_edit_base_url,
+        api_key=config.image_edit_api_key,
+        model=config.image_edit_model,
+        timeout=float(config.image_edit_timeout),
+        n=config.image_edit_n,
+        size=config.image_edit_size,
+        prompt_extend=config.image_edit_prompt_extend,
+        enable_thinking=config.image_edit_enable_thinking,
+        negative_prompt=config.image_edit_negative_prompt,
+    )
+    state.signature = signature
+    return state.client
+
+
 def get_model_profile(config: AiChatConfig, model: str) -> ModelProfile:
     """解析模型画像（平台归属 + 能力元数据）。
 
@@ -82,3 +124,7 @@ def get_model_profile(config: AiChatConfig, model: str) -> ModelProfile:
 async def close_all() -> None:
     """关闭全部模型连接池（生命周期 shutdown 调用，幂等）。"""
     await _gateway.close_all()
+    if _image_edit_state.client is not None:
+        await _image_edit_state.client.close()
+        _image_edit_state.client = None
+        _image_edit_state.signature = None

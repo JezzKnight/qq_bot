@@ -5,12 +5,15 @@ from .context import (
     AsyncSender,
     InteractionPayload,
     SearchTracker,
+    current_edited_images,
+    current_images,
     current_interaction,
     current_scope,
     current_search_tracker,
     current_send_msg,
     current_sender_name,
 )
+from .image_edit import edit_image_tool
 from .interact_with_member import interact_with_member_tool
 from .query_chat_history import query_chat_history
 from .recall_memory import recall_memory
@@ -31,11 +34,14 @@ __all__ = [
     "SearchTracker",
     "batch_search",
     "cancel_reminder_tool",
+    "current_edited_images",
+    "current_images",
     "current_interaction",
     "current_scope",
     "current_search_tracker",
     "current_send_msg",
     "current_sender_name",
+    "edit_image_tool",
     "get_tools_schema",
     "image_understand",
     "interact_with_member_tool",

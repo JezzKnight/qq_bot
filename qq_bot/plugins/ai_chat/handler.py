@@ -22,9 +22,12 @@ from .session_store import _load_session_models, get_session_model
 from .tools import (
     TOOLS,
     SearchTracker,
+    current_edited_images,
+    current_images,
     current_interaction,
     current_scope,
     current_search_tracker,
+    current_send_msg,
     current_sender_name,
     get_tools_schema,
 )
@@ -52,7 +55,9 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         scope = f"private/{event.user_id}"
     current_scope.set(scope)
     current_sender_name.set(sender_name)
-    
+    # 请求级发送通道：长耗时工具（如图片编辑）用它给用户发进度提示
+    current_send_msg.set(matcher.send)
+
     config = get_plugin_config(AiChatConfig)
     # 获取用户发送内容
     content = event.get_plaintext().strip()
@@ -159,6 +164,8 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     # 媒体处理：图片下载为二进制传给主模型；视频 URL 直接透传
     # （OpenAI 兼容模型支持在 image_url.url 传公开可访问的视频地址，由模型理解内容）
     images = await extract_images(event) or None
+    # 图片句柄：工具（如 edit_image）需要按序号取图，主模型手里只有内容没有图片对象
+    current_images.set(images or [])
     video_urls = extract_video_urls(event)
     identity_tag = f'<user identity id="{event.user_id}" name="{sender_name}"/>'
     messages.append(ChatMessage(
@@ -183,6 +190,9 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
     ]
     if is_group:
         tool_names.append("interact_with_member")
+    # 图片编辑只在配置了 API Key 时暴露：否则主模型会频繁调用一个必然失败的工具
+    if config.image_edit_api_key.strip():
+        tool_names.append("edit_image")
     final_content = "AI暂时无法响应，请稍后重试"  # 兜底默认值（互动 break 分支不读它）
     for _ in range(5):
         response = await client.chat(
@@ -286,6 +296,16 @@ async def handle_ai_chat(event: MessageEvent, matcher: Matcher):
         # finish() 会抛出 FinishedException 结束本次事件（同下方群聊分支的用法），
         # 因此不会继续落到通用 append / 回复逻辑，避免重复落库与重复发送。
         await matcher.finish()
+
+    # 图片编辑产物出栈：图是主产物先发；final_content 随后作为解说走常规回复路径。
+    # 发图必须在工具作用域之外（工具里没有 matcher），故经 ContextVar 带出。
+    edited_images = current_edited_images.get()
+    current_edited_images.set(None)
+    if edited_images:
+        for img in edited_images:
+            await matcher.send(MessageSegment.image(img.data))
+        if not final_content.strip() or final_content.startswith("AI暂时无法响应"):
+            final_content = "图已经改好了，看看效果吧"
 
     # 添加至记忆中
     # 历史消息带上发言人身份标记：读回上下文时模型才能区分各成员发言；

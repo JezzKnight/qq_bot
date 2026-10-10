@@ -57,6 +57,24 @@ class AiChatConfig(BaseModel):
     vision_api_key: str = ""
     vision_model: str = ""
 
+    # ── 图像编辑（图生图）：DashScope 图像生成与编辑接口，独立传输层 ──
+    # image_edit_api_key 为空 = 功能未启用（工具不会暴露给主模型）
+    image_edit_api_key: str = ""
+    image_edit_base_url: str = "https://dashscope.aliyuncs.com"
+    image_edit_model: str = "qwen-image-3.0"
+    image_edit_timeout: int = 180           # 生成本身耗时长，给足读超时
+    image_edit_n: int = Field(default=1, ge=1, le=6)
+    # 输出尺寸，DashScope 格式 "宽*高"；留空 = 按被修改的原图尺寸自动推算，
+    # 这样双图输入时输出比例不会随参照图意外变化（见 note §73）
+    image_edit_size: str = ""
+    image_edit_prompt_extend: bool = True   # 服务端智能改写提示词（官方推荐开启）
+    # 思考模式默认关闭：默认 true 会显著拖长生成时间，群聊场景不值得
+    image_edit_enable_thinking: bool = False
+    image_edit_negative_prompt: str = ""
+    image_edit_cooldown_seconds: int = 30   # 同一会话两次改图的最小间隔
+    image_edit_max_per_user_per_day: int = 10   # 按用户计费的护栏（进程内计数）
+    image_edit_prompt_refine: bool = True   # 是否用 ImageEditAgent 先精修指令
+
     # ── 记忆设置 ──
     memory_backend: str = "sqlite"
     max_history: int = 20                          # 最大历史消息条数
