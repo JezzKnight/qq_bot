@@ -9,6 +9,7 @@ from qq_bot.logging_config import init_logging
 
 from .commands import (
     clear_memory,
+    comfyui,
     get_pixiv,
     help,
     list_reminders,

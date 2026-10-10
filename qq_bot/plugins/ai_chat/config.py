@@ -75,6 +75,12 @@ class AiChatConfig(BaseModel):
     image_edit_max_per_user_per_day: int = 10   # 按用户计费的护栏（进程内计数）
     image_edit_prompt_refine: bool = True   # 是否用 ImageEditAgent 先精修指令
 
+    # ── 本地 ComfyUI 生图（/comfyui 指令）──
+    comfyui_api_base: str = "http://127.0.0.1:8188"  # 本地服务地址
+    comfyui_workflow: str = ""    # 工作流 JSON（API 格式）路径，空 = 关闭
+    comfyui_upload_node: str = "4"    # LoadImage 节点 id，接用户上传的图
+    comfyui_timeout: int = 600    # 排队+生成总超时秒数（SeedVR2 超分较慢）
+
     # ── 记忆设置 ──
     memory_backend: str = "sqlite"
     max_history: int = 20                          # 最大历史消息条数

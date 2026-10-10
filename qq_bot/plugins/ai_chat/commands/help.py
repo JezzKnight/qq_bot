@@ -27,6 +27,10 @@ COMMANDS = {
           "args": "[指令名]",
           "desc": "显示帮助信息",
       },
+      "comfyui": {
+          "args": "",
+          "desc": "本地 ComfyUI 生图：图片和指令一起发（demo）",
+      },
   }
 
 help_cmd = on_command("help", rule=to_me(), aliases={""}, block=True, force_whitespace=True)
