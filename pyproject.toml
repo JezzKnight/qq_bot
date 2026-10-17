@@ -17,13 +17,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pyright[nodejs]",
-    "ruff"
+    "ruff",
+    "pytest",
 ]
 
 [project.dependency-groups]
 dev = [
     "pyright",
     "ruff",
+    "pytest",
 ]
 [tool.nonebot]
 plugin_dirs = ["qq_bot/plugins"]

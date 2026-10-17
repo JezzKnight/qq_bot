@@ -7,6 +7,10 @@ from qq_bot.plugins.ai_chat.client_factory import get_client_for_model
 from qq_bot.plugins.ai_chat.config import AiChatConfig
 from qq_bot.plugins.ai_chat.tools.registry import TOOLS, get_tools_schema, register_tool
 
+# 子 Agent 可用工具：两轮硬上限结构下，第 1 轮 batch_search、第 2 轮按需 web_fetch。
+# save_digest 已移出——3 次调用内没有摘要回收的收益空间。
+SEARCH_AGENT_TOOLS = ("batch_search", "web_fetch")
+
 
 @register_tool(
     name="search_agent",
@@ -32,7 +36,7 @@ async def search_agent(task: str, model: str | None = None):
         model = config.ai_model
     client = await get_client_for_model(config, model)
     # 构建sub agent的工具列表
-    tools = get_tools_schema("batch_search","web_fetch","save_digest")
+    tools = get_tools_schema(*SEARCH_AGENT_TOOLS)
     subagent = SearchAgent(
         client, tools, model, task, TOOLS,
         usage_recorder=token_usage.record,

@@ -73,11 +73,16 @@ class BaseSubAgent(ABC):
         # 记录 batch_search 调用的 tool_call_id，供 save_digest 替换时定位原始搜索批次
         batch_search_ids: set[str] = set()
         try:
-            for _ in range(self.max_rounds):
+            for round_i in range(self.max_rounds):
+                # 末轮强制收卷：不再提供 tools，模型只能产出最终答复，
+                # 从结构上杜绝"最后一轮仍发起工具调用 → 白耗一轮 → 直接失败"的路径
+                round_tools = (
+                    self.tools if round_i < self.max_rounds - 1 else None
+                )
                 response = await self.client.chat(
                     messages=messages,
                     model=self.model,
-                    tools=self.tools
+                    tools=round_tools
                 )
                 # 记录本次调用的 token 消耗
                 if self.usage_recorder is not None:

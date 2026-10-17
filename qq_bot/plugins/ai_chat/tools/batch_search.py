@@ -4,14 +4,14 @@ from typing import Literal
 
 from .context import current_search_tracker
 from .registry import register_tool
-from .web_search import _search_result_payload, web_search_by_tavily
+from .web_search import MAX_SEARCH_RESULTS, _search_result_payload, web_search_by_tavily
 
 
 def _build_payload(query: str, topic: str, exclude_domains: list[str] | None) -> dict:
     """构造单次 Tavily 搜索的请求参数（与 web_search 保持一致）"""
     payload = {
         # 决定搜索开销
-        "max_results": 8,  # 最多搜索结果
+        "max_results": MAX_SEARCH_RESULTS,  # 最多搜索结果
         "search_depth": "advanced",  # 搜索模式
         "include_favicon": False,  # 包含每个搜索结果的图标
         "include_answer": False,  # 输出带有Tavily LLM自带的问题总结

@@ -4,6 +4,10 @@ from .context import current_search_tracker
 from .registry import register_tool
 from .tavily_client import TavilyClient
 
+# 单方向搜索结果条数上限：条数直接决定综合调用的 prompt 体积（24 条 ≈ 20k tokens），
+# 只减条数不减单条内容，保住信息完整性
+MAX_SEARCH_RESULTS = 5
+
 _client = TavilyClient()
 
 @register_tool(
@@ -39,7 +43,7 @@ async def web_search(query: str,
 
     payload = {
         # 决定搜索开销
-        "max_results": 8, # 最多搜索结果
+        "max_results": MAX_SEARCH_RESULTS, # 最多搜索结果
         "search_depth": "advanced", # 搜索模式
         "include_favicon": False, # 包含每个搜索结果的图标
         "include_answer": False, # 输出带有Tavily LLM自带的问题总结
